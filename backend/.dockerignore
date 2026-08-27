@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+
+*.exe
+*.out
+*.log
+
+tmp/
+bin/
+dist/

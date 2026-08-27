@@ -1,268 +1,431 @@
-# Proyecto IngSoft3 - versión A
+# Time Tracker — Ingeniería de Software 3
 
-Repositorio para la materia Ingeniería de Software 3.
+Aplicación full-stack para gestión de tiempo orientada a freelancers y trabajadores remotos. Permite administrar proyectos y tareas, registrar horas trabajadas, visualizar estadísticas y generar facturas.
 
-## Instalación
+Este repositorio es utilizado como aplicación del semestre para los Trabajos Prácticos de **Ingeniería de Software 3**.
 
-git clone https://github.com/JuliAA10/ingsoft3-tps
+## Funcionalidades
 
-# Time Tracker Application
+- Autenticación de usuarios mediante JWT.
+- Gestión de proyectos.
+- Gestión de tareas.
+- Registro de tiempo por proyecto y tarea.
+- Timer de inicio y finalización.
+- Estadísticas diarias, semanales y mensuales.
+- Tarifas por hora para cada proyecto.
+- Generación de facturas en PDF.
+- Interfaz responsive.
 
-A full-stack time tracking application built with React and Go, designed for freelancers and remote workers to track their time, manage projects, and generate invoices
-
-## Features
-
-- 👤 User authentication with JWT
-- ⏱️ Project-based time tracking with start/stop timer
-- 📊 Visual analytics (daily/weekly/monthly)
-- 💰 Multiple hourly rates for different projects
-- 📋 Task management with categorization and tagging
-- 📄 Invoice generation with PDF export
-- 📱 Responsive design for mobile and desktop
-
-## Tech Stack
+## Stack tecnológico
 
 ### Frontend
 
-- React with TypeScript
-- TailwindCSS for styling
-- Shadcn UI components
-- React Query for data fetching
-- React Router for navigation
-- Chart.js for visualizations
-- jsPDF for invoice generation
+- React
+- TypeScript
+- Vite
+- TailwindCSS
+- React Query
+- React Router
+- Axios
+- jsPDF
 
 ### Backend
 
-- Go (Golang)
-- Gin web framework
-- GORM for database operations
-- PostgreSQL database
-- JWT for authentication
+- Go
+- Gin
+- GORM
+- JWT
+- bcrypt
 
-## Screenshot
+### Base de datos
 
-<table>
-    <tr>
-        <td>
-            <img src="images/image.png" />
-            List Project
-        </td>
-        <td>
-            <img src="images/image1.png" />
-            Add Project
-        </td>
-    </tr>
-    <tr>
-        <td>
-            <img src="images/image4.png" />
-            List Task
-        </td>
-        <td>
-            <img src="images/image5.png" />
-            Add Task
-        </td>
-    </tr>
-    <tr>
-        <td>
-            <img src="images/image2.png" />
-            Detail Time Tracking by Task
-        </td>
-        <td>
-            <img src="images/image3.png" />
-            Time Tracking Dashboard
-        </td>
-    </tr>
-    <tr>
-        <td>
-            <img src="images/image6.png" />
-            Analytics Daily, Weekly, and Monthly
-        </td>
-        <td>
-            <img src="images/image7.png" />
-            Generate Report based Start Date and End Date
-        </td>
-    </tr>
-    <tr>
-        <td>
-            <img src="images/image8.png" />
-            PDF Report Invoice
-        </td>
-    </tr>
-</table>
+- PostgreSQL
 
-## Prerequisites
+### Infraestructura local
 
-Before you begin, ensure you have installed:
+- Docker
+- Docker Compose
+- nginx
 
-- Node.js (v18 or later)
-- Go (v1.19 or later)
-- PostgreSQL (v12 or later)
+---
 
-## Getting Started
+# Ejecución con Docker
 
-### Backend Setup
+## Requisitos
 
-1. Navigate to the backend directory:
+Para ejecutar el sistema completo solamente es necesario tener instalado:
+
+- Git
+- Docker Desktop / Docker Engine
+- Docker Compose
+
+No es necesario instalar localmente Go, Node.js ni PostgreSQL.
+
+## 1. Clonar el repositorio
 
 ```bash
-cd backend
+git clone https://github.com/JuliAA10/ingsoft3-tps.git
+cd ingsoft3-tps
 ```
 
-2. Install Go dependencies:
+## 2. Crear el archivo de variables de entorno
+
+El repositorio contiene un archivo `.env.example` con las variables necesarias para ejecutar la aplicación.
+
+En Linux, macOS o Git Bash:
 
 ```bash
-go mod tidy
+cp .env.example .env
 ```
 
-3. Create a `.env` file:
+En Windows CMD:
+
+```cmd
+copy .env.example .env
+```
+
+Luego se pueden modificar los valores de `.env` si se desea.
+
+Ejemplo:
 
 ```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/timetracker?sslmode=disable
-JWT_SECRET=your-secret-key
-PORT=8080
+DB_PASSWORD=postgres
+JWT_SECRET=tp2-secret-local
 ```
 
-4. Create the database:
+El archivo `.env` contiene configuración sensible y **no se encuentra versionado en Git**. El archivo `.env.example` sí se versiona y sirve como plantilla.
 
-```sql
-CREATE DATABASE timetracker;
-```
-
-5. Run the server:
+## 3. Levantar el sistema completo
 
 ```bash
-go run cmd/main.go
+docker compose up -d --build
 ```
 
-### Frontend Setup
+Docker Compose construye y levanta automáticamente:
 
-1. Navigate to the frontend directory:
+- PostgreSQL.
+- Backend desarrollado en Go.
+- Frontend React servido mediante nginx.
+
+Para verificar el estado de los servicios:
 
 ```bash
-cd client
+docker compose ps
 ```
 
-2. Install dependencies:
+La base de datos debería aparecer con estado `healthy` y los servicios `backend` y `frontend` en ejecución.
+
+## 4. Acceder a la aplicación
+
+Frontend:
+
+```text
+http://localhost:3000
+```
+
+Backend:
+
+```text
+http://localhost:8080
+```
+
+Las peticiones realizadas por el frontend a `/api` son redirigidas por nginx hacia el servicio `backend` dentro de la red creada por Docker Compose.
+
+---
+
+# Arquitectura de contenedores
+
+El sistema se ejecuta mediante tres servicios:
+
+```text
+Navegador
+    |
+    | localhost:3000
+    v
+Frontend
+React + nginx
+    |
+    | backend:8080
+    v
+Backend
+Go + Gin
+    |
+    | db:5432
+    v
+PostgreSQL
+    |
+    v
+Volumen db_data
+```
+
+Docker Compose crea una red interna donde los servicios pueden comunicarse utilizando sus nombres.
+
+Por este motivo, el backend se conecta a PostgreSQL utilizando:
+
+```text
+host=db
+```
+
+en lugar de utilizar una dirección IP fija o `localhost`.
+
+---
+
+# Persistencia de datos
+
+PostgreSQL utiliza un volumen nombrado:
+
+```text
+db_data
+```
+
+Los datos sobreviven aunque los contenedores sean eliminados.
+
+Por ejemplo:
 
 ```bash
-npm install
+docker compose down
+docker compose up -d
 ```
 
-3. Create a `.env` file:
+Los datos continúan disponibles porque el volumen no fue eliminado.
 
-```env
-VITE_API_URL=http://localhost:8080/api
-```
-
-4. Start the development server:
+Para eliminar también los datos persistidos:
 
 ```bash
-npm run dev
+docker compose down -v
 ```
 
-## Project Structure
+La opción `-v` elimina los volúmenes asociados al proyecto.
 
+---
+
+# Healthcheck y orden de arranque
+
+El servicio PostgreSQL posee un `healthcheck`.
+
+El backend utiliza:
+
+```yaml
+depends_on:
+  db:
+    condition: service_healthy
 ```
+
+Esto evita que el backend intente conectarse inmediatamente después de crear el contenedor de PostgreSQL.
+
+`depends_on` define el orden de arranque, mientras que el `healthcheck` permite verificar que PostgreSQL esté realmente listo para aceptar conexiones.
+
+---
+
+# Imágenes Docker
+
+Los Dockerfiles del backend y frontend utilizan **multi-stage builds**.
+
+## Backend
+
+La primera etapa utiliza la imagen del SDK de Go para compilar la aplicación.
+
+La segunda etapa contiene únicamente el binario compilado y una imagen Alpine mínima.
+
+Esto permite reducir considerablemente el tamaño de la imagen final.
+
+## Frontend
+
+La primera etapa utiliza Node para instalar las dependencias y generar el build de producción mediante Vite.
+
+La segunda etapa utiliza nginx para servir los archivos estáticos generados.
+
+Node no forma parte de la imagen final.
+
+---
+
+# Imágenes publicadas
+
+Las imágenes del proyecto están publicadas en GitHub Container Registry con versionado semántico:
+
+```text
+ghcr.io/juliaa10/timetracker-backend:v0.1.0
+ghcr.io/juliaa10/timetracker-frontend:v0.1.0
+```
+
+Las dos imágenes son públicas.
+
+La versión `v0.1.0` fue construida para arquitectura `linux/amd64`.
+
+---
+
+# Ejecutar utilizando las imágenes del Registry
+
+Además del `docker-compose.yml` utilizado para construir las imágenes localmente, el proyecto contiene:
+
+```text
+docker-compose.registry.yml
+```
+
+Esta variante utiliza directamente las imágenes publicadas en GitHub Container Registry.
+
+Para ejecutarla:
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.registry.yml up -d
+```
+
+En Windows CMD:
+
+```cmd
+copy .env.example .env
+docker compose -f docker-compose.registry.yml up -d
+```
+
+En este caso Docker no construye el frontend ni el backend a partir del código fuente, sino que descarga las imágenes `v0.1.0` publicadas.
+
+Para verificar los servicios:
+
+```bash
+docker compose -f docker-compose.registry.yml ps
+```
+
+---
+
+# Detener la aplicación
+
+Sin eliminar los datos:
+
+```bash
+docker compose down
+```
+
+Eliminando también el volumen de PostgreSQL:
+
+```bash
+docker compose down -v
+```
+
+---
+
+# Estructura del proyecto
+
+```text
+ingsoft3-tps/
+│
 ├── backend/
 │   ├── cmd/
-│   │   └── main.go
 │   ├── internal/
-│   │   ├── config/
-│   │   ├── models/
-│   │   ├── handlers/
-│   │   ├── middleware/
-│   │   └── utils/
-│   └── README.md
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   ├── go.mod
+│   └── go.sum
 │
-└── client/
-    ├── src/
-    │   ├── api/
-    │   ├── components/
-    │   ├── contexts/
-    │   ├── features/
-    │   ├── hooks/
-    │   └── lib/
-    └── README.md
+├── client/
+│   ├── src/
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   ├── nginx.conf
+│   ├── package.json
+│   └── package-lock.json
+│
+├── docker-compose.yml
+├── docker-compose.registry.yml
+├── .env.example
+├── decisiones.md
+├── evidencias.md
+└── README.md
 ```
 
-## API Endpoints
+---
 
-### Authentication
+# API
 
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login user
+Todas las rutas de la API utilizan el prefijo `/api`.
 
-### Projects
+## Autenticación
 
-- `GET /api/projects` - List all projects
-- `POST /api/projects` - Create new project
-- `PUT /api/projects/:id` - Update project
-- `DELETE /api/projects/:id` - Delete project
-
-### Time Entries
-
-- `GET /api/time-entries` - List time entries
-- `POST /api/time-entries` - Create time entry
-- `PUT /api/time-entries/:id` - Update time entry
-- `DELETE /api/time-entries/:id` - Delete time entry
-
-### Tasks
-
-- `GET /api/tasks` - List tasks
-- `POST /api/tasks` - Create task
-- `PUT /api/tasks/:id` - Update task
-- `DELETE /api/tasks/:id` - Delete task
-
-### Analytics
-
-- `GET /api/analytics/daily` - Get daily analytics
-- `GET /api/analytics/weekly` - Get weekly analytics
-- `GET /api/analytics/monthly` - Get monthly analytics
-
-### Invoices
-
-- `POST /api/invoices/generate` - Generate invoice
-
-## Available Scripts
-
-### Backend
-
-```bash
-# Run server
-go run cmd/main.go
-
-# Run tests
-go test ./...
+```text
+POST /api/auth/register
+POST /api/auth/login
 ```
 
-### Frontend
+## Proyectos
 
-```bash
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
+```text
+GET    /api/projects
+POST   /api/projects
+GET    /api/projects/:id
+PUT    /api/projects/:id
+DELETE /api/projects/:id
 ```
 
-## Contributing
+## Tareas
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+```text
+GET    /api/tasks
+POST   /api/tasks
+GET    /api/tasks/:id
+PUT    /api/tasks/:id
+DELETE /api/tasks/:id
+```
 
-## License
+## Registros de tiempo
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+```text
+GET    /api/time-entries
+POST   /api/time-entries
+GET    /api/time-entries/:id
+PUT    /api/time-entries/:id
+DELETE /api/time-entries/:id
+```
 
-## Acknowledgments
+## Analytics
 
-- [Shadcn UI](https://ui.shadcn.com/) for the beautiful UI components
-- [Gin Web Framework](https://gin-gonic.com/) for the Go web framework
-- [GORM](https://gorm.io/) for the ORM library
+```text
+GET /api/analytics/daily
+GET /api/analytics/weekly
+GET /api/analytics/monthly
+```
+
+## Facturas
+
+```text
+POST /api/invoices/generate
+```
+
+---
+
+# Capturas de la aplicación
+
+Las imágenes de la interfaz se encuentran en la carpeta:
+
+```text
+images/
+```
+
+Incluyen ejemplos de:
+
+- Gestión de proyectos.
+- Gestión de tareas.
+- Registro de tiempo.
+- Dashboard.
+- Analytics.
+- Generación de facturas.
+
+---
+
+# Flujo de trabajo
+
+Los cambios al repositorio se realizan utilizando ramas de corta duración y Pull Requests hacia `main`.
+
+Convención utilizada:
+
+```text
+feature/<descripcion>
+fix/<descripcion>
+```
+
+La rama `main` se encuentra protegida y no permite cambios directos.
+
+---
+
+# Licencia
+
+El proyecto se distribuye bajo licencia MIT.

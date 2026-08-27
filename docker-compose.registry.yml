@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16-alpine
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: timetracker
+
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d timetracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ghcr.io/juliaa10/timetracker-backend:v0.1.0
+
+    environment:
+      DATABASE_URL: "host=db user=postgres password=${DB_PASSWORD} dbname=timetracker port=5432 sslmode=disable"
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: "8080"
+      GIN_MODE: release
+
+    ports:
+      - "8080:8080"
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: ghcr.io/juliaa10/timetracker-frontend:v0.1.0
+
+    ports:
+      - "3000:80"
+
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
