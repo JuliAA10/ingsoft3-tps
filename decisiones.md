@@ -206,7 +206,7 @@ También se comprobó que la existencia de capas `CACHED` no debe evaluarse obse
 tiene un costo. La evidencia utilizada fue la aparición explícita de `CACHED` en los logs
 de Docker BuildKit.
 
-## Uso de Inteligencia Artificial
+## 8. Uso de Inteligencia Artificial
 
 Se utilizó ChatGPT como herramienta de asistencia durante el desarrollo del TP4 para
 interpretar la consigna, adaptar el workflow de GitHub Actions a la estructura real del
