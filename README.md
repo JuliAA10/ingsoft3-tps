@@ -429,3 +429,4 @@ La rama `main` se encuentra protegida y no permite cambios directos.
 # Licencia
 
 El proyecto se distribuye bajo licencia MIT.
+
