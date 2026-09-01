@@ -1,5 +1,7 @@
 # Time Tracker — Ingeniería de Software 3
 
+[![CI](https://github.com/JuliAA10/ingsoft3-tps/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliAA10/ingsoft3-tps/actions/workflows/ci.yml)
+
 Aplicación full-stack para gestión de tiempo orientada a freelancers y trabajadores remotos. Permite administrar proyectos y tareas, registrar horas trabajadas, visualizar estadísticas y generar facturas.
 
 Este repositorio es utilizado como aplicación del semestre para los Trabajos Prácticos de **Ingeniería de Software 3**.
