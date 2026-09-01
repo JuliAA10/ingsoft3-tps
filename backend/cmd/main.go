@@ -15,6 +15,9 @@ import (
 )
 
 func main() {
+	    // TODO: agregar endpoint de health check
+        noExiste()
+
 	// Load configuration
 	config.LoadConfig()
 
