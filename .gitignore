@@ -14,3 +14,7 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+# Reportes locales de cobertura Go
+/backend/coverage*.out
+/backend/coverage*.html

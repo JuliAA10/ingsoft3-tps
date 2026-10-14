@@ -6,6 +6,7 @@ import (
 	"time"
 	"timetracker/internal/database"
 	"timetracker/internal/models"
+	"timetracker/internal/services"
 	"timetracker/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -64,22 +65,18 @@ func GenerateInvoice(c *gin.Context) {
 		return
 	}
 
-	var entries []models.TimeEntry
-	err = database.DB.Where(
-		"project_id = ? AND user_id = ? AND start_time BETWEEN ? AND ?",
-		req.ProjectID, userID, startDate, endDate,
-	).Find(&entries).Error
-
+	entriesByDate, err := services.LoadInvoiceHours(
+		invoiceTimeEntryRepository{},
+		req.ProjectID,
+		userID,
+		startDate,
+		endDate,
+	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching time entries"})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Error fetching time entries",
+		})
 		return
-	}
-
-	// Group entries by date
-	entriesByDate := make(map[string]float64)
-	for _, entry := range entries {
-		date := entry.StartTime.Format("2006-01-02")
-		entriesByDate[date] += float64(entry.Duration) / 3600 // Convert seconds to hours
 	}
 
 	// Create formatted entries
@@ -96,7 +93,7 @@ func GenerateInvoice(c *gin.Context) {
 	for _, hours := range entriesByDate {
 		totalHours += hours
 	}
-	totalAmount := totalHours * project.HourlyRate
+	totalAmount := services.CalculateAmount(totalHours, project.HourlyRate)
 
 	response := InvoiceResponse{
 		ProjectName: project.Name,

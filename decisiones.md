@@ -120,7 +120,7 @@ el build y el proceso que verifica CI es el mismo que posteriormente se utilizar
 construir las imágenes de la aplicación.
 
 El pipeline solamente construye las imágenes y no las publica en ningún registry,
-por lo que se configuró `push: false`. (Lo veremos en el TP5).
+por lo que se configuró `push: false`. (Lo abordaremos en el TP6).
 
 ## 3. Cache de capas
 
@@ -218,3 +218,226 @@ las ejecuciones reales de GitHub Actions. También se comprobó directamente el
 comportamiento de los Required Status Checks, el bloqueo de merges, la recuperación luego
 del fix, la política de actualización de ramas y el funcionamiento del status badge.
 Todo esto fue contrastado con el tp4 subido por la cátedra.
+
+# TP5 – Testing y calidad automatizada
+
+## 1. Elección de la lógica a testear
+
+Se decidió comenzar por la lógica de registro de tiempos y facturación, porque los
+errores en estos cálculos afectan directamente las horas trabajadas y el importe
+que se cobra al cliente.
+
+Se seleccionaron cuatro reglas de la aplicación:
+
+- Calcular la duración de un registro a partir de su inicio y fin.
+- Convertir segundos a horas, conservando las fracciones.
+- Calcular el importe a partir de las horas y la tarifa.
+- Agrupar las horas trabajadas por fecha de inicio.
+
+Los tests incluyen casos normales, casos de borde y entradas inválidas. Por ejemplo,
+se verifica que 5400 segundos equivalgan a 1,5 horas, que dos registros del mismo día
+sumen sus horas y que un registro sin fechas o con un final anterior al inicio sea
+rechazado.
+
+Se decidió aceptar una duración de cero cuando el inicio y el fin coinciden.
+Para la agrupación se mantuvo el comportamiento existente: cada registro se asigna
+a su fecha de inicio, sin dividirlo entre días si cruza la medianoche.
+
+## 2. Separación de la lógica y los handlers
+
+Inicialmente, los cálculos de duración y facturación estaban dentro de los handlers,
+mezclados con el procesamiento HTTP y el acceso a la base de datos.
+
+Se extrajeron las funciones CalculateDuration, SecondsToHours, CalculateAmount y
+GroupHoursByDate al paquete internal/services. Luego se modificaron los handlers para
+utilizar esas mismas funciones.
+
+Esta decisión permite probar la lógica de forma aislada, sin levantar el servidor ni
+conectarse a PostgreSQL. Además, los tests verifican funciones utilizadas realmente
+por la aplicación, evitando crear código exclusivamente para alcanzar una cantidad
+de pruebas.
+
+## 3. Estructura de los tests y herramientas utilizadas
+
+Para el backend se utilizó el paquete testing de Go y archivos terminados en
+\_test.go.
+
+Los tests se organizaron siguiendo la estructura AAA:
+
+- Arrange: preparar los datos y las dependencias.
+- Act: ejecutar la operación bajo prueba.
+- Assert: comprobar el resultado o la interacción esperada.
+
+Para los tests parametrizados se utilizaron tablas de casos y t.Run. Esto permite
+ejecutar un mismo comportamiento con distintas entradas, como intervalos de tiempo
+válidos, fechas faltantes o inicio y fin iguales.
+
+Se utilizaron fechas fijas para que los resultados no dependan del momento en que se
+ejecuten los tests.
+
+Hasta este avance se implementaron 13 funciones de test: 12 en services y una en
+handlers. Los subtests de cada tabla no se contaron como funciones independientes.
+
+## 4. Refactorización para utilizar un mock
+
+La consulta de registros para generar una factura utilizaba directamente
+database.DB dentro del handler.
+
+Se creó la interfaz TimeEntryRepository, con el método FindForInvoice, y la función
+LoadInvoiceHours, que recibe esa dependencia como parámetro.
+
+En la aplicación se utiliza invoiceTimeEntryRepository, que realiza la consulta
+real mediante GORM. En los tests se utiliza un doble escrito en Go, que devuelve
+registros controlados y registra las llamadas recibidas.
+
+El test verifica que el repositorio sea consultado exactamente una vez y que reciba
+el proyecto, usuario y período correctos. También comprueba que los registros
+devueltos se agrupen correctamente.
+
+Se agregó otro test para comprobar que un error del repositorio sea devuelto al
+llamador sin producir un resultado de horas.
+
+El doble no funciona solamente como un stub que entrega datos: también permite
+verificar la interacción con la dependencia, cumpliendo el objetivo del mock.
+Estos tests no verifican el SQL ni la conexión real a PostgreSQL.
+
+## 5. Medición inicial de cobertura y alcance
+
+Primero se midió la cobertura del paquete internal/services:
+
+```bash
+go test ./internal/services -count=1 -coverprofile=coverage.out
+go tool cover -func=coverage.out
+```
+
+El resultado fue 100 % de cobertura de sentencias en las cinco funciones del paquete.
+
+Luego se amplió la medición a todos los paquetes del backend:
+
+```bash
+go test ./... -count=1 -coverpkg=./... -coverprofile=coverage-all.out
+go tool cover -func=coverage-all.out
+```
+
+La cobertura global inicial fue de 4,4 %. Después de incorporar el test de fecha
+inválida del handler de facturación, aumentó a 6,0 %.
+
+La diferencia se debe al alcance de cada medición: los servicios están ejercitados
+por los tests, pero gran parte de los handlers, la autenticación y el acceso a datos
+todavía no tienen pruebas.
+
+Por este motivo, el 100 % de services no se presenta como cobertura de todo el backend.
+
+La medición global utiliza ./... sin exclusiones explícitas de paquetes.
+El alcance definitivo del quality gate y sus exclusiones todavía no fueron definidos.
+
+La herramienta nativa de Go informa cobertura de sentencias. Ese porcentaje no se
+considera cobertura de ramas ni se presenta como cobertura de líneas. La medición de
+ramas y la elección del umbral quedan pendientes de resolver antes del cierre del TP.
+
+## 6. Por qué una cobertura alta no garantiza calidad
+
+La cobertura indica qué código se ejecutó durante los tests, pero no demuestra por
+sí sola que los resultados hayan sido comprobados correctamente.
+
+Por ejemplo, un test que solamente llame a CalculateAmount(1.5, 100), sin verificar
+su resultado, puede ejecutar toda la función y aportar cobertura aunque el cálculo
+sea incorrecto.
+
+En nuestra suite se comprueba que el resultado sea 150. También se verifica que
+SecondsToHours(5400) devuelva 1.5, lo que permite detectar una división entera que
+pierda la fracción de hora.
+
+Aun con 100 % de sentencias en services, pueden faltar escenarios. Por ejemplo,
+todavía no se agregó un test específico para comprobar la asignación de un registro
+que cruza la medianoche a su fecha de inicio.
+
+## 7. Ejercicio del camino sin cubrir
+
+En la medición global inicial, GenerateInvoice, dentro de
+backend/internal/handlers/invoice_handler.go, tenía 0 % de cobertura.
+
+Se identificó el camino de error del if err != nil inmediatamente posterior a:
+
+```go
+startDate, err := time.Parse("2006-01-02", req.StartDate)
+```
+
+Una entrada concreta que recorre ese camino es:
+
+```json
+{
+  "projectId": 7,
+  "startDate": "no-es-una-fecha",
+  "endDate": "2026-10-14"
+}
+```
+
+Se decidió agregar TestGenerateInvoice_RejectsInvalidStartDate para comprobar
+ese comportamiento.
+
+El test procesa una petición en memoria mediante httptest y Gin, sin levantar un
+servidor ni utilizar PostgreSQL, porque la validación ocurre antes de acceder a la base.
+
+Se verifica que la respuesta tenga estado HTTP 400 y el mensaje
+"Invalid start date format". Comprobar también el mensaje permite distinguir este
+rechazo de otros errores que podrían producir el mismo estado HTTP.
+
+El test pasó correctamente. La cobertura de GenerateInvoice aumentó de 0 % a 19,4 %
+y la cobertura global del backend pasó de 4,4 % a 6,0 %.
+
+Esto demuestra que se incorporó una prueba para un camino antes no ejercitado,
+aunque todavía quedan otros caminos del handler sin cubrir.
+
+## 8. Verificación local y dificultades encontradas
+
+Los cambios fueron formateados con go fmt y verificados mediante:
+
+```bash
+go test ./internal/services -v
+go test ./internal/handlers -run TestGenerateInvoice_RejectsInvalidStartDate -v
+go test ./...
+```
+
+Las 13 funciones de test finalizaron correctamente y los paquetes del backend
+compilaron sin errores.
+
+Una dificultad de interpretación fue distinguir el 100 % del paquete services de
+la cobertura global del backend. Se resolvió ampliando la medición con
+-coverpkg=./... y revisando el reporte por función.
+
+También se identificó que la herramienta nativa de Go mide sentencias y no ramas,
+por lo que ambos conceptos deben mantenerse separados en los reportes y en la
+justificación del umbral.
+
+## 9. Estado del trabajo y tareas pendientes
+
+Este apartado documenta el avance local del backend. Todavía resta completar:
+
+- La suite del frontend con parametrización, caso de error y mock.
+- La definición del alcance, exclusiones y umbrales de cobertura.
+- La resolución de la medición de ramas del backend.
+- La ejecución de los tests desde etapas de los Dockerfiles.
+- La publicación de resúmenes y reportes descargables en GitHub Actions.
+- La demostración del bloqueo por cobertura con los dos Pull Requests.
+- Los enlaces a las corridas y PRs junto a las decisiones correspondientes.
+- El cierre con el tag v5.0.0 y su release.
+
+Hasta este momento no se considera implementado el quality gate del TP5.
+
+## 10. Uso de Inteligencia Artificial
+
+Se utilizó ChatGPT como herramienta de asistencia para interpretar la consigna,
+seleccionar reglas de negocio, proponer la separación entre handlers y servicios,
+escribir los tests, implementar el doble del repositorio e interpretar los
+resultados de cobertura.
+
+También se utilizó para organizar esta documentación.
+
+El código sugerido fue incorporado al proyecto y verificado mediante ejecuciones
+locales de go test, comprobando los resultados de los tests y los porcentajes
+informados por la herramienta de cobertura.
+
+La asistencia incluyó la explicación de los asserts y de los límites de cada prueba,
+especialmente la diferencia entre comprobar la interacción con un repositorio
+simulado y verificar una consulta contra la base de datos real.
