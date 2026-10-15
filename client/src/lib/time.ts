@@ -19,3 +19,21 @@ export function calculateDuration(
 
   return Math.floor((endMs - startMs) / 1000);
 }
+
+// Calcula minutos facturables, redondeando hacia arriba
+// en bloques de 15 minutos.
+export function calculateBillableMinutes(seconds: number): number {
+  if (!Number.isFinite(seconds)) {
+    throw new Error("La duración debe ser un número finito");
+  }
+
+  if (seconds < 0) {
+    throw new Error("La duración no puede ser negativa");
+  }
+
+  if (seconds === 0) {
+    return 0;
+  }
+
+  return Math.ceil(seconds / 900) * 15;
+}
