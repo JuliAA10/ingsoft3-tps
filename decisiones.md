@@ -410,22 +410,139 @@ También se identificó que la herramienta nativa de Go mide sentencias y no ram
 por lo que ambos conceptos deben mantenerse separados en los reportes y en la
 justificación del umbral.
 
-## 9. Estado del trabajo y tareas pendientes
+## 9. Tests y refactorización del frontend
 
-Este apartado documenta el avance local del backend. Todavía resta completar:
+Se incorporaron Vitest 3.2.7 y @vitest/coverage-v8 3.2.7, con ejecución en
+entorno Node, sin DOM.
 
-- La suite del frontend con parametrización, caso de error y mock.
-- La definición del alcance, exclusiones y umbrales de cobertura.
-- La resolución de la medición de ramas del backend.
-- La ejecución de los tests desde etapas de los Dockerfiles.
-- La publicación de resúmenes y reportes descargables en GitHub Actions.
-- La demostración del bloqueo por cobertura con los dos Pull Requests.
-- Los enlaces a las corridas y PRs junto a las decisiones correspondientes.
-- El cierre con el tag v5.0.0 y su release.
+La suite cuenta con 18 casos ejecutados, distribuidos en tres archivos:
 
-Hasta este momento no se considera implementado el quality gate del TP5.
+- utils.test.ts: formato de duración y moneda.
+- invoices.test.ts: solicitud de facturación y propagación de errores.
+- time.test.ts: cálculo de duración y validación de fechas.
 
-## 10. Uso de Inteligencia Artificial
+Se utilizaron tests parametrizados con it.each, casos de error y un mock
+del cliente HTTP mediante vi.mock y vi.fn.
+
+El mock permite comprobar que la generación de facturas invoque una sola
+vez al endpoint correcto, envíe los datos esperados y devuelva la respuesta.
+También se verifica que un error de la solicitud sea propagado al llamador,
+sin realizar peticiones reales.
+
+Se detectó que el cálculo de duración estaba repetido en TimeEntryForm,
+TimerContext y useTimer. Se extrajo a src/lib/time.ts y los tres lugares
+pasaron a utilizar la misma función.
+
+La función recibe los instantes de inicio y fin, acepta duración cero,
+rechaza fechas inválidas o intervalos invertidos y devuelve segundos
+completos. Los tests utilizan fechas fijas para evitar depender del reloj.
+
+Además, al detener los temporizadores se calcula la duración usando el
+instante de finalización, en lugar de enviar el valor del último refresco
+visual del contador.
+
+Los 18 casos pasaron localmente y npm run build terminó correctamente.
+
+## 10. Alcance y umbrales de cobertura del frontend
+
+La medición incluye src/\*_/_.{ts,tsx}. Se excluyen los archivos de test y
+las declaraciones .d.ts porque no forman parte del comportamiento de
+producción que se busca medir.
+
+Se mantienen incluidos los componentes, hooks y contextos, ya que pueden
+contener lógica sin probar. No se los excluyó solamente por tener
+extensión .tsx o por disminuir el porcentaje global.
+
+Se configuraron los siguientes umbrales:
+
+| Alcance             | Líneas | Ramas |
+| ------------------- | -----: | ----: |
+| Frontend completo   |    1 % |  20 % |
+| src/lib/time.ts     |   90 % |  90 % |
+| src/api/invoices.ts |   90 % |  90 % |
+| src/lib/utils.ts    |   60 % |  90 % |
+
+La medición local previa al gate fue de 1,02 % de líneas y 25 % de ramas
+para todo el frontend. time.ts e invoices.ts alcanzaron 100 % en ambas
+métricas; utils.ts obtuvo 65,21 % de líneas y 100 % de ramas.
+
+El piso global es una protección inicial limitada, no una afirmación de
+que la aplicación tiene cobertura suficiente. Se complementa con umbrales
+más exigentes en los módulos trabajados.
+
+En utils.ts se eligió 60 % de líneas frente al 65,21 % medido. Todavía
+faltan pruebas para cn y formatDate. Para elevar el umbral global será
+necesario ampliar la suite sobre las funcionalidades restantes.
+
+Se comprobó el fallo del mecanismo aumentando temporalmente el umbral
+de líneas de utils.ts a 80 %. Los 18 tests pasaron, pero el comando falló
+porque su cobertura de 65,21 % no alcanzó ese valor.
+
+Luego se restauró el umbral a 60 % y la ejecución volvió a finalizar
+correctamente con código de salida 0.
+
+Esta comprobación local no reemplaza la demostración exigida mediante
+Pull Requests con código nuevo sin tests y umbrales sin modificar.
+
+## 11. Ejecución del frontend en Docker y GitHub Actions
+
+Se agregó una etapa test al Dockerfile del frontend, derivada de la etapa
+build. Su comando ejecuta npm run test:coverage.
+
+De esta manera, los tests utilizan el código y las dependencias de la
+misma receta de construcción de la aplicación. La etapa final continúa
+siendo Nginx.
+
+En la prueba local con Docker pasaron los 18 tests y se cumplieron los
+umbrales, con código de salida 0. El reporte del contenedor indicó
+1,42 % de líneas y 26,78 % de ramas para el frontend completo.
+
+Estos valores difieren de la medición local en Windows. No se interpreta
+esa diferencia como una mejora del código; la causa exacta no fue
+determinada. La ejecución en el contenedor de CI será la referencia
+para evaluar el gate.
+
+Se extendió el job build-frontend del workflow existente para:
+
+- Construir y cargar la etapa test.
+- Ejecutar los tests y verificar los umbrales dentro del contenedor.
+- Escribir un resumen de cobertura en la corrida.
+- Publicar los reportes como artefacto coverage-frontend.
+
+Los pasos de resumen y publicación utilizan always() para intentar
+conservar la evidencia aunque falle la cobertura. Esto no anula el
+fallo del paso de tests ni convierte el job en exitoso.
+
+PR de implementación:
+https://github.com/JuliAA10/ingsoft3-tps/pull/19
+
+Primera corrida del PR:
+https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38759240571
+
+Al registrar este avance, la ejecución del frontend en GitHub Actions
+todavía estaba en curso. Queda pendiente confirmar su resultado y la
+disponibilidad del resumen y del artefacto.
+
+## 12. Problemas adicionales y estado del trabajo
+
+Durante la edición de package.json, VS Code informó que el archivo en
+disco era más reciente. Esto ocurrió después de instalar las dependencias.
+Se indicó conservar la versión actualizada y aplicar el cambio de scripts
+sin sobrescribir las dependencias agregadas por npm.
+
+También apareció un aviso de deprecación de baseUrl. Se eliminó esa
+opción de tsconfig.json y se conservó el alias mediante paths.
+Los tests y la compilación finalizaron correctamente después del cambio.
+
+La primera ejecución de cobertura en Docker falló con EBUSY porque
+Vitest intentaba eliminar /app/coverage, que era el punto de montaje
+del volumen.
+
+Se resolvió montando la carpeta local en /out y generando los reportes
+en /out/frontend. Así Vitest puede limpiar su subcarpeta sin eliminar
+el punto de montaje. La ejecución posterior terminó correctamente.
+
+## 13. Uso de Inteligencia Artificial
 
 Se utilizó ChatGPT como herramienta de asistencia para interpretar la consigna,
 seleccionar reglas de negocio, proponer la separación entre handlers y servicios,
@@ -441,3 +558,13 @@ informados por la herramienta de cobertura.
 La asistencia incluyó la explicación de los asserts y de los límites de cada prueba,
 especialmente la diferencia entre comprobar la interacción con un repositorio
 simulado y verificar una consulta contra la base de datos real.
+
+En el frontend se utilizó ChatGPT para asistir en la configuración de
+Vitest, la escritura de tests y mocks, la extracción del cálculo de
+duración, la configuración de umbrales y la integración con Docker y
+GitHub Actions.
+
+Las sugerencias se verificaron ejecutando los 18 casos de test, el build
+de producción, el fallo temporal del umbral y la ejecución dentro del
+contenedor. La validación del pipeline se registra por separado según
+el resultado real de cada corrida.
