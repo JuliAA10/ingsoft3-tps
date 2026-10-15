@@ -1,12 +1,25 @@
 // src/components/forms/TimeEntryForm.tsx
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { timeEntriesApi } from '@/api/time-entries';
-import { projectsApi } from '@/api/projects';
-import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/common/Select';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/common/Card';
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { timeEntriesApi } from "@/api/time-entries";
+import { projectsApi } from "@/api/projects";
+import { Button } from "@/components/common/Button";
+import { Input } from "@/components/common/Input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/common/Select";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/common/Card";
+import { calculateDuration } from "@/lib/time";
 
 interface TimeEntryFormProps {
   onSuccess?: () => void;
@@ -30,13 +43,13 @@ export const TimeEntryForm = ({
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     projectId: defaultValues.projectId || 0,
-    startTime: defaultValues.startTime || '',
-    endTime: defaultValues.endTime || '',
+    startTime: defaultValues.startTime || "",
+    endTime: defaultValues.endTime || "",
   });
 
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: projectsApi.getAll
+    queryKey: ["projects"],
+    queryFn: projectsApi.getAll,
   });
 
   const mutation = useMutation({
@@ -45,23 +58,17 @@ export const TimeEntryForm = ({
         ...data,
         duration: calculateDuration(data.startTime, data.endTime),
       };
-      
+
       if (isEdit && entryId) {
         return timeEntriesApi.update(entryId, payload);
       }
       return timeEntriesApi.create(payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['time-entries'] });
+      queryClient.invalidateQueries({ queryKey: ["time-entries"] });
       onSuccess?.();
     },
   });
-
-  const calculateDuration = (start: string, end: string) => {
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    return Math.floor((endDate.getTime() - startDate.getTime()) / 1000);
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,14 +79,24 @@ export const TimeEntryForm = ({
     <Card>
       <form onSubmit={handleSubmit}>
         <CardHeader>
-          <CardTitle>{isEdit ? 'Edit Time Entry' : 'New Time Entry'}</CardTitle>
+          <CardTitle>{isEdit ? "Edit Time Entry" : "New Time Entry"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {" "}
+          {mutation.isError && (
+            <p role="alert" className="text-sm text-red-600">
+              {mutation.error instanceof Error
+                ? mutation.error.message
+                : "No se pudo guardar el registro"}
+            </p>
+          )}
           <div>
             <label className="block text-sm font-medium mb-1">Project</label>
             <Select
               value={formData.projectId.toString()}
-              onValueChange={(value) => setFormData({ ...formData, projectId: parseInt(value) })}
+              onValueChange={(value) =>
+                setFormData({ ...formData, projectId: parseInt(value) })
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select a project" />
@@ -98,7 +115,9 @@ export const TimeEntryForm = ({
             <Input
               type="datetime-local"
               value={formData.startTime}
-              onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, startTime: e.target.value })
+              }
               required
             />
           </div>
@@ -107,7 +126,9 @@ export const TimeEntryForm = ({
             <Input
               type="datetime-local"
               value={formData.endTime}
-              onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, endTime: e.target.value })
+              }
               required
             />
           </div>
@@ -119,7 +140,11 @@ export const TimeEntryForm = ({
             </Button>
           )}
           <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? 'Saving...' : isEdit ? 'Update Entry' : 'Create Entry'}
+            {mutation.isPending
+              ? "Saving..."
+              : isEdit
+                ? "Update Entry"
+                : "Create Entry"}
           </Button>
         </CardFooter>
       </form>

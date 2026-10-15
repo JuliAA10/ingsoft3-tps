@@ -18,3 +18,4 @@ Thumbs.db
 # Reportes locales de cobertura Go
 /backend/coverage*.out
 /backend/coverage*.html
+/client/coverage/
