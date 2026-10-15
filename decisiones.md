@@ -519,9 +519,49 @@ https://github.com/JuliAA10/ingsoft3-tps/pull/19
 Primera corrida del PR:
 https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38759240571
 
-Al registrar este avance, la ejecución del frontend en GitHub Actions
-todavía estaba en curso. Queda pendiente confirmar su resultado y la
-disponibilidad del resumen y del artefacto.
+### Verificación del pipeline y evidencias
+
+Se verificó una ejecución del PR #19 en la que los jobs build-backend
+y build-frontend finalizaron correctamente.
+
+En ambos componentes se construyeron las etapas de tests, se ejecutaron
+las pruebas y se cumplieron los umbrales de cobertura configurados.
+También finalizaron correctamente los pasos de generación del resumen
+y publicación de reportes.
+
+Se comprobó la disponibilidad de los artefactos descargables
+coverage-backend y coverage-frontend.
+
+Corrida verificada:
+https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38778635555
+
+PR de implementación:
+https://github.com/JuliAA10/ingsoft3-tps/pull/19
+
+Esta corrida demuestra que los tests, los umbrales y la publicación de
+reportes funcionan en CI. Todavía no demuestra el bloqueo de un merge
+por cobertura.
+
+### Demostración de fallo por cobertura
+
+Se agregó calculateBillableMinutes en src/lib/time.ts sin incorporar
+sus tests. La función propone redondear el tiempo facturable hacia
+arriba en bloques de 15 minutos; todavía no está conectada al cálculo
+actual de facturas.
+
+La imagen del frontend se construyó correctamente y los 18 tests
+existentes pasaron. Sin embargo, build-frontend falló porque la
+cobertura de líneas de time.ts bajó a 59,25 %, por debajo del umbral
+de 90 %. El paso terminó con código de salida 1.
+
+Corrida roja por cobertura:
+https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38780695123
+
+Para corregirlo se agregaron pruebas de redondeo, límites exactos de
+los bloques, duración cero, valores negativos y valores no finitos.
+El umbral se mantuvo sin modificaciones.
+
+Queda pendiente registrar la corrida exitosa posterior a esta corrección.
 
 ## 12. Problemas adicionales y estado del trabajo
 

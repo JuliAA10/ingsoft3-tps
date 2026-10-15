@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateDuration } from "./time";
+import { calculateDuration, calculateBillableMinutes } from "./time";
 
 describe("calculateDuration", () => {
   it.each([
@@ -49,4 +49,54 @@ describe("calculateDuration", () => {
       "El fin no puede ser anterior al inicio",
     );
   });
+});
+
+describe("calculateBillableMinutes", () => {
+  it.each([
+    [1, 15],
+    [899, 15],
+    [900, 15],
+    [901, 30],
+    [1800, 30],
+    [1801, 45],
+  ])("factura %i segundos como %i minutos", (seconds, expected) => {
+    // Arrange: datos de la tabla.
+
+    // Act
+    const result = calculateBillableMinutes(seconds);
+
+    // Assert
+    expect(result).toBe(expected);
+  });
+
+  it("devuelve cero cuando no hubo tiempo trabajado", () => {
+    // Arrange
+    const seconds = 0;
+
+    // Act
+    const result = calculateBillableMinutes(seconds);
+
+    // Assert
+    expect(result).toBe(0);
+  });
+
+  it("rechaza duraciones negativas", () => {
+    // Arrange
+    const seconds = -1;
+
+    // Act y Assert
+    expect(() => calculateBillableMinutes(seconds)).toThrow(
+      "La duración no puede ser negativa",
+    );
+  });
+
+  it.each([NaN, Infinity, -Infinity])(
+    "rechaza una duración no finita: %s",
+    (seconds) => {
+      // Act y Assert
+      expect(() => calculateBillableMinutes(seconds)).toThrow(
+        "La duración debe ser un número finito",
+      );
+    },
+  );
 });
