@@ -561,7 +561,15 @@ Para corregirlo se agregaron pruebas de redondeo, límites exactos de
 los bloques, duración cero, valores negativos y valores no finitos.
 El umbral se mantuvo sin modificaciones.
 
-Queda pendiente registrar la corrida exitosa posterior a esta corrección.
+Después de incorporar los tests de calculateBillableMinutes, la suite
+del frontend pasó de 18 a 29 casos. La corrida posterior finalizó
+correctamente, manteniendo los mismos umbrales de cobertura.
+
+Corrida exitosa después de agregar los tests:
+https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38781580642
+
+La corrección consistió en probar el código nuevo, sin reducir el
+porcentaje exigido ni excluir la función de la medición.
 
 ## 12. Problemas adicionales y estado del trabajo
 
