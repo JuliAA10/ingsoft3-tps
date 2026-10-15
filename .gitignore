@@ -19,3 +19,4 @@ Thumbs.db
 /backend/coverage*.out
 /backend/coverage*.html
 /client/coverage/
+/backend/coverage/

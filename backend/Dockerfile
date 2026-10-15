@@ -13,6 +13,14 @@ COPY . .
 # Compilamos el backend para Linux
 RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd
 
+# ---- Etapa de tests ----
+FROM build AS test
+
+# Normaliza los saltos de línea del script creado en Windows.
+RUN sed -i 's/\r$//' /app/scripts/test-coverage.sh
+
+CMD ["sh", "/app/scripts/test-coverage.sh"]
+
 # ---- Etapa 2: runtime ----
 FROM alpine:3.20
 

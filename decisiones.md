@@ -542,6 +542,28 @@ Se resolvió montando la carpeta local en /out y generando los reportes
 en /out/frontend. Así Vitest puede limpiar su subcarpeta sin eliminar
 el punto de montaje. La ejecución posterior terminó correctamente.
 
+Se agregó una etapa test al Dockerfile del backend, derivada de build,
+que ejecuta scripts/test-coverage.sh.
+
+El script ejecuta los tests y genera reportes de cobertura de sentencias
+para el backend completo y para internal/services. Los umbrales iniciales
+son 5 % global y 90 % para services, frente a las mediciones de 6 % y
+100 %, respectivamente.
+
+El piso global ofrece una protección limitada y mantiene visible el
+código sin pruebas. El umbral de services protege con mayor exigencia
+las reglas de tiempos y facturación trabajadas en este TP.
+
+La ejecución local dentro del contenedor pasó los tests, cumplió ambos
+umbrales y terminó con código de salida 0.
+
+Se agregaron al job build-backend los pasos para construir la etapa test,
+ejecutarla, mostrar el resumen y publicar el artefacto coverage-backend.
+Queda pendiente verificar esta integración en GitHub Actions.
+
+La medición de ramas del backend sigue pendiente; los porcentajes
+anteriores corresponden exclusivamente a sentencias.
+
 ## 13. Uso de Inteligencia Artificial
 
 Se utilizó ChatGPT como herramienta de asistencia para interpretar la consigna,
