@@ -331,9 +331,7 @@ Por este motivo, el 100 % de services no se presenta como cobertura de todo el b
 La medición global utiliza ./... sin exclusiones explícitas de paquetes.
 El alcance definitivo del quality gate y sus exclusiones todavía no fueron definidos.
 
-La herramienta nativa de Go informa cobertura de sentencias. Ese porcentaje no se
-considera cobertura de ramas ni se presenta como cobertura de líneas. La medición de
-ramas y la elección del umbral quedan pendientes de resolver antes del cierre del TP.
+La herramienta nativa de Go informa cobertura de sentencias.
 
 ## 6. Por qué una cobertura alta no garantiza calidad
 
@@ -609,8 +607,28 @@ Se agregaron al job build-backend los pasos para construir la etapa test,
 ejecutarla, mostrar el resumen y publicar el artefacto coverage-backend.
 Queda pendiente verificar esta integración en GitHub Actions.
 
-La medición de ramas del backend sigue pendiente; los porcentajes
-anteriores corresponden exclusivamente a sentencias.
+#### Medición complementaria de ramas
+
+Se incorporó Gobco v1.3.4 en la etapa `test` del Dockerfile del
+backend y se ejecuta con `-branch -list-all` desde el script de cobertura.
+
+La ejecución local en Docker obtuvo 6/6 resultados de ramas cubiertos
+(100%) en `internal/services`. Los tres `if` instrumentados se evaluaron
+tanto por verdadero como por falso: error del repositorio, fechas
+faltantes y fecha de fin anterior al inicio.
+
+Este resultado corresponde únicamente a las decisiones instrumentadas
+en `services`; no representa la cobertura de ramas de todo el backend
+ni garantiza todas las combinaciones de condiciones.
+
+Se generan los archivos `branches-services.txt` y
+`branches-services.json` dentro de la carpeta de reportes del backend,
+y el resultado se incorpora a `summary.md`.
+
+La cobertura de ramas es informativa. Se mantienen los umbrales
+obligatorios de sentencias: 5% para el backend completo y 90% para
+`services`. La ejecución local obtuvo 6.0% y 100.0%, respectivamente,
+y finalizó con código de salida 0.
 
 ## 13. Uso de Inteligencia Artificial
 

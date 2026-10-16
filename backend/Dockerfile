@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd
 
 # ---- Etapa de tests ----
 FROM build AS test
-
+RUN go install github.com/rillig/gobco@v1.3.4
 # Normaliza los saltos de línea del script creado en Windows.
 RUN sed -i 's/\r$//' /app/scripts/test-coverage.sh
 

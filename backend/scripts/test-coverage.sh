@@ -37,6 +37,27 @@ if [ -z "$TOTAL" ] || [ -z "$SERVICES" ]; then
   exit 1
 fi
 
+# Cobertura de ramas del paquete services.
+# Se elimina el archivo anterior para no acumular resultados entre ejecuciones.
+rm -f "$REPORT_DIR/branches-services.json"
+
+if /go/bin/gobco -branch -list-all \
+  -stats "$REPORT_DIR/branches-services.json" \
+  ./internal/services > "$REPORT_DIR/branches-services.txt" 2>&1; then
+  cat "$REPORT_DIR/branches-services.txt"
+else
+  cat "$REPORT_DIR/branches-services.txt"
+  exit 1
+fi
+
+BRANCH_COUNTS=$(awk '/^Branch coverage:/ {print $3}' \
+  "$REPORT_DIR/branches-services.txt")
+
+if [ -z "$BRANCH_COUNTS" ]; then
+  echo "ERROR: no se obtuvo la cobertura de ramas de services."
+  exit 1
+fi
+
 # Este archivo se podrá publicar en el resumen de GitHub Actions.
 cat > "$REPORT_DIR/summary.md" <<EOF
 ## Cobertura del backend
@@ -46,7 +67,9 @@ cat > "$REPORT_DIR/summary.md" <<EOF
 | Backend completo | ${TOTAL}% | 5% |
 | Services | ${SERVICES}% | 90% |
 
-La cobertura de ramas no está incluida en esta medición.
+Cobertura de ramas de services (Gobco): $BRANCH_COUNTS resultados cubiertos.
+Alcance: decisiones instrumentadas por Gobco en internal/services; no representa todo el backend.
+La medición de ramas es informativa. Los umbrales obligatorios se mantienen sobre sentencias.
 EOF
 
 cat "$REPORT_DIR/summary.md"
