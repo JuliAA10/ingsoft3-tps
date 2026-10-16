@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { timeEntriesApi } from '@/api/time-entries';
+import { useState, useEffect } from "react";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { timeEntriesApi } from "@/api/time-entries";
+import { calculateDuration } from "@/lib/time";
 
 export function useTimer(projectId?: number) {
   const [isRunning, setIsRunning] = useState(false);
@@ -11,7 +12,7 @@ export function useTimer(projectId?: number) {
   const createEntry = useMutation({
     mutationFn: timeEntriesApi.create,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['time-entries'] });
+      queryClient.invalidateQueries({ queryKey: ["time-entries"] });
     },
   });
 
@@ -19,7 +20,7 @@ export function useTimer(projectId?: number) {
     let intervalId: number;
     if (isRunning && startTime) {
       intervalId = window.setInterval(() => {
-        setElapsed(Math.floor((new Date().getTime() - startTime.getTime()) / 1000));
+        setElapsed(calculateDuration(startTime, new Date()));
       }, 1000);
     }
     return () => {
@@ -38,16 +39,16 @@ export function useTimer(projectId?: number) {
   const stop = async () => {
     if (!projectId || !startTime) return;
     setIsRunning(false);
-    
+
     const endTime = new Date();
-    
+
     await createEntry.mutateAsync({
       projectId,
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
-      duration: elapsed
+      duration: calculateDuration(startTime, endTime),
     });
-    
+
     setStartTime(null);
     setElapsed(0);
   };
@@ -57,6 +58,6 @@ export function useTimer(projectId?: number) {
     elapsed,
     start,
     stop,
-    isLoading: createEntry.isPending
+    isLoading: createEntry.isPending,
   };
 }

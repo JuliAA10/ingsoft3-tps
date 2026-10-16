@@ -120,7 +120,7 @@ el build y el proceso que verifica CI es el mismo que posteriormente se utilizar
 construir las imágenes de la aplicación.
 
 El pipeline solamente construye las imágenes y no las publica en ningún registry,
-por lo que se configuró `push: false`. (Lo veremos en el TP5).
+por lo que se configuró `push: false`. (Lo abordaremos en el TP6).
 
 ## 3. Cache de capas
 
@@ -218,3 +218,441 @@ las ejecuciones reales de GitHub Actions. También se comprobó directamente el
 comportamiento de los Required Status Checks, el bloqueo de merges, la recuperación luego
 del fix, la política de actualización de ramas y el funcionamiento del status badge.
 Todo esto fue contrastado con el tp4 subido por la cátedra.
+
+# TP5 – Testing y calidad automatizada
+
+## 1. Elección de la lógica a testear
+
+Se decidió comenzar por la lógica de registro de tiempos y facturación, porque los
+errores en estos cálculos afectan directamente las horas trabajadas y el importe
+que se cobra al cliente.
+
+Se seleccionaron cuatro reglas de la aplicación:
+
+- Calcular la duración de un registro a partir de su inicio y fin.
+- Convertir segundos a horas, conservando las fracciones.
+- Calcular el importe a partir de las horas y la tarifa.
+- Agrupar las horas trabajadas por fecha de inicio.
+
+Los tests incluyen casos normales, casos de borde y entradas inválidas. Por ejemplo,
+se verifica que 5400 segundos equivalgan a 1,5 horas, que dos registros del mismo día
+sumen sus horas y que un registro sin fechas o con un final anterior al inicio sea
+rechazado.
+
+Se decidió aceptar una duración de cero cuando el inicio y el fin coinciden.
+Para la agrupación se mantuvo el comportamiento existente: cada registro se asigna
+a su fecha de inicio, sin dividirlo entre días si cruza la medianoche.
+
+## 2. Separación de la lógica y los handlers
+
+Inicialmente, los cálculos de duración y facturación estaban dentro de los handlers,
+mezclados con el procesamiento HTTP y el acceso a la base de datos.
+
+Se extrajeron las funciones CalculateDuration, SecondsToHours, CalculateAmount y
+GroupHoursByDate al paquete internal/services. Luego se modificaron los handlers para
+utilizar esas mismas funciones.
+
+Esta decisión permite probar la lógica de forma aislada, sin levantar el servidor ni
+conectarse a PostgreSQL. Además, los tests verifican funciones utilizadas realmente
+por la aplicación, evitando crear código exclusivamente para alcanzar una cantidad
+de pruebas.
+
+## 3. Estructura de los tests y herramientas utilizadas
+
+Para el backend se utilizó el paquete testing de Go y archivos terminados en
+\_test.go.
+
+Los tests se organizaron siguiendo la estructura AAA:
+
+- Arrange: preparar los datos y las dependencias.
+- Act: ejecutar la operación bajo prueba.
+- Assert: comprobar el resultado o la interacción esperada.
+
+Para los tests parametrizados se utilizaron tablas de casos y t.Run. Esto permite
+ejecutar un mismo comportamiento con distintas entradas, como intervalos de tiempo
+válidos, fechas faltantes o inicio y fin iguales.
+
+Se utilizaron fechas fijas para que los resultados no dependan del momento en que se
+ejecuten los tests.
+
+Hasta este avance se implementaron 13 funciones de test: 12 en services y una en
+handlers. Los subtests de cada tabla no se contaron como funciones independientes.
+
+## 4. Refactorización para utilizar un mock
+
+La consulta de registros para generar una factura utilizaba directamente
+database.DB dentro del handler.
+
+Se creó la interfaz TimeEntryRepository, con el método FindForInvoice, y la función
+LoadInvoiceHours, que recibe esa dependencia como parámetro.
+
+En la aplicación se utiliza invoiceTimeEntryRepository, que realiza la consulta
+real mediante GORM. En los tests se utiliza un doble escrito en Go, que devuelve
+registros controlados y registra las llamadas recibidas.
+
+El test verifica que el repositorio sea consultado exactamente una vez y que reciba
+el proyecto, usuario y período correctos. También comprueba que los registros
+devueltos se agrupen correctamente.
+
+Se agregó otro test para comprobar que un error del repositorio sea devuelto al
+llamador sin producir un resultado de horas.
+
+El doble no funciona solamente como un stub que entrega datos: también permite
+verificar la interacción con la dependencia, cumpliendo el objetivo del mock.
+Estos tests no verifican el SQL ni la conexión real a PostgreSQL.
+
+## 5. Medición inicial de cobertura y alcance
+
+Primero se midió la cobertura del paquete internal/services:
+
+```bash
+go test ./internal/services -count=1 -coverprofile=coverage.out
+go tool cover -func=coverage.out
+```
+
+El resultado fue 100 % de cobertura de sentencias en las cinco funciones del paquete.
+
+Luego se amplió la medición a todos los paquetes del backend:
+
+```bash
+go test ./... -count=1 -coverpkg=./... -coverprofile=coverage-all.out
+go tool cover -func=coverage-all.out
+```
+
+La cobertura global inicial fue de 4,4 %. Después de incorporar el test de fecha
+inválida del handler de facturación, aumentó a 6,0 %.
+
+La diferencia se debe al alcance de cada medición: los servicios están ejercitados
+por los tests, pero gran parte de los handlers, la autenticación y el acceso a datos
+todavía no tienen pruebas.
+
+Por este motivo, el 100 % de services no se presenta como cobertura de todo el backend.
+
+La medición global utiliza ./... sin exclusiones explícitas de paquetes.
+El alcance definitivo del quality gate y sus exclusiones todavía no fueron definidos.
+
+La herramienta nativa de Go informa cobertura de sentencias.
+
+## 6. Por qué una cobertura alta no garantiza calidad
+
+La cobertura indica qué código se ejecutó durante los tests, pero no demuestra por
+sí sola que los resultados hayan sido comprobados correctamente.
+
+Por ejemplo, un test que solamente llame a CalculateAmount(1.5, 100), sin verificar
+su resultado, puede ejecutar toda la función y aportar cobertura aunque el cálculo
+sea incorrecto.
+
+En nuestra suite se comprueba que el resultado sea 150. También se verifica que
+SecondsToHours(5400) devuelva 1.5, lo que permite detectar una división entera que
+pierda la fracción de hora.
+
+Aun con 100 % de sentencias en services, pueden faltar escenarios. Por ejemplo,
+todavía no se agregó un test específico para comprobar la asignación de un registro
+que cruza la medianoche a su fecha de inicio.
+
+## 7. Ejercicio del camino sin cubrir
+
+En la medición global inicial, GenerateInvoice, dentro de
+backend/internal/handlers/invoice_handler.go, tenía 0 % de cobertura.
+
+Se identificó el camino de error del if err != nil inmediatamente posterior a:
+
+```go
+startDate, err := time.Parse("2006-01-02", req.StartDate)
+```
+
+Una entrada concreta que recorre ese camino es:
+
+```json
+{
+  "projectId": 7,
+  "startDate": "no-es-una-fecha",
+  "endDate": "2026-10-14"
+}
+```
+
+Se decidió agregar TestGenerateInvoice_RejectsInvalidStartDate para comprobar
+ese comportamiento.
+
+El test procesa una petición en memoria mediante httptest y Gin, sin levantar un
+servidor ni utilizar PostgreSQL, porque la validación ocurre antes de acceder a la base.
+
+Se verifica que la respuesta tenga estado HTTP 400 y el mensaje
+"Invalid start date format". Comprobar también el mensaje permite distinguir este
+rechazo de otros errores que podrían producir el mismo estado HTTP.
+
+El test pasó correctamente. La cobertura de GenerateInvoice aumentó de 0 % a 19,4 %
+y la cobertura global del backend pasó de 4,4 % a 6,0 %.
+
+Esto demuestra que se incorporó una prueba para un camino antes no ejercitado,
+aunque todavía quedan otros caminos del handler sin cubrir.
+
+## 8. Verificación local y dificultades encontradas
+
+Los cambios fueron formateados con go fmt y verificados mediante:
+
+```bash
+go test ./internal/services -v
+go test ./internal/handlers -run TestGenerateInvoice_RejectsInvalidStartDate -v
+go test ./...
+```
+
+Las 13 funciones de test finalizaron correctamente y los paquetes del backend
+compilaron sin errores.
+
+Una dificultad de interpretación fue distinguir el 100 % del paquete services de
+la cobertura global del backend. Se resolvió ampliando la medición con
+-coverpkg=./... y revisando el reporte por función.
+
+También se identificó que la herramienta nativa de Go mide sentencias y no ramas,
+por lo que ambos conceptos deben mantenerse separados en los reportes y en la
+justificación del umbral.
+
+## 9. Tests y refactorización del frontend
+
+Se incorporaron Vitest 3.2.7 y @vitest/coverage-v8 3.2.7, con ejecución en
+entorno Node, sin DOM.
+
+La suite cuenta con 18 casos ejecutados, distribuidos en tres archivos:
+
+- utils.test.ts: formato de duración y moneda.
+- invoices.test.ts: solicitud de facturación y propagación de errores.
+- time.test.ts: cálculo de duración y validación de fechas.
+
+Se utilizaron tests parametrizados con it.each, casos de error y un mock
+del cliente HTTP mediante vi.mock y vi.fn.
+
+El mock permite comprobar que la generación de facturas invoque una sola
+vez al endpoint correcto, envíe los datos esperados y devuelva la respuesta.
+También se verifica que un error de la solicitud sea propagado al llamador,
+sin realizar peticiones reales.
+
+Se detectó que el cálculo de duración estaba repetido en TimeEntryForm,
+TimerContext y useTimer. Se extrajo a src/lib/time.ts y los tres lugares
+pasaron a utilizar la misma función.
+
+La función recibe los instantes de inicio y fin, acepta duración cero,
+rechaza fechas inválidas o intervalos invertidos y devuelve segundos
+completos. Los tests utilizan fechas fijas para evitar depender del reloj.
+
+Además, al detener los temporizadores se calcula la duración usando el
+instante de finalización, en lugar de enviar el valor del último refresco
+visual del contador.
+
+Los 18 casos pasaron localmente y npm run build terminó correctamente.
+
+## 10. Alcance y umbrales de cobertura del frontend
+
+La medición incluye src/\*_/_.{ts,tsx}. Se excluyen los archivos de test y
+las declaraciones .d.ts porque no forman parte del comportamiento de
+producción que se busca medir.
+
+Se mantienen incluidos los componentes, hooks y contextos, ya que pueden
+contener lógica sin probar. No se los excluyó solamente por tener
+extensión .tsx o por disminuir el porcentaje global.
+
+Se configuraron los siguientes umbrales:
+
+| Alcance             | Líneas | Ramas |
+| ------------------- | -----: | ----: |
+| Frontend completo   |    1 % |  20 % |
+| src/lib/time.ts     |   90 % |  90 % |
+| src/api/invoices.ts |   90 % |  90 % |
+| src/lib/utils.ts    |   60 % |  90 % |
+
+La medición local previa al gate fue de 1,02 % de líneas y 25 % de ramas
+para todo el frontend. time.ts e invoices.ts alcanzaron 100 % en ambas
+métricas; utils.ts obtuvo 65,21 % de líneas y 100 % de ramas.
+
+El piso global es una protección inicial limitada, no una afirmación de
+que la aplicación tiene cobertura suficiente. Se complementa con umbrales
+más exigentes en los módulos trabajados.
+
+En utils.ts se eligió 60 % de líneas frente al 65,21 % medido. Todavía
+faltan pruebas para cn y formatDate. Para elevar el umbral global será
+necesario ampliar la suite sobre las funcionalidades restantes.
+
+Se comprobó el fallo del mecanismo aumentando temporalmente el umbral
+de líneas de utils.ts a 80 %. Los 18 tests pasaron, pero el comando falló
+porque su cobertura de 65,21 % no alcanzó ese valor.
+
+Luego se restauró el umbral a 60 % y la ejecución volvió a finalizar
+correctamente con código de salida 0.
+
+Esta comprobación local no reemplaza la demostración exigida mediante
+Pull Requests con código nuevo sin tests y umbrales sin modificar.
+
+## 11. Ejecución del frontend en Docker y GitHub Actions
+
+Se agregó una etapa test al Dockerfile del frontend, derivada de la etapa
+build. Su comando ejecuta npm run test:coverage.
+
+De esta manera, los tests utilizan el código y las dependencias de la
+misma receta de construcción de la aplicación. La etapa final continúa
+siendo Nginx.
+
+En la prueba local con Docker pasaron los 18 tests y se cumplieron los
+umbrales, con código de salida 0. El reporte del contenedor indicó
+1,42 % de líneas y 26,78 % de ramas para el frontend completo.
+
+Estos valores difieren de la medición local en Windows. No se interpreta
+esa diferencia como una mejora del código; la causa exacta no fue
+determinada. La ejecución en el contenedor de CI será la referencia
+para evaluar el gate.
+
+Se extendió el job build-frontend del workflow existente para:
+
+- Construir y cargar la etapa test.
+- Ejecutar los tests y verificar los umbrales dentro del contenedor.
+- Escribir un resumen de cobertura en la corrida.
+- Publicar los reportes como artefacto coverage-frontend.
+
+Los pasos de resumen y publicación utilizan always() para intentar
+conservar la evidencia aunque falle la cobertura. Esto no anula el
+fallo del paso de tests ni convierte el job en exitoso.
+
+PR de implementación:
+https://github.com/JuliAA10/ingsoft3-tps/pull/19
+
+Primera corrida del PR:
+https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38759240571
+
+### Verificación del pipeline y evidencias
+
+Se verificó una ejecución del PR #19 en la que los jobs build-backend
+y build-frontend finalizaron correctamente.
+
+En ambos componentes se construyeron las etapas de tests, se ejecutaron
+las pruebas y se cumplieron los umbrales de cobertura configurados.
+También finalizaron correctamente los pasos de generación del resumen
+y publicación de reportes.
+
+Se comprobó la disponibilidad de los artefactos descargables
+coverage-backend y coverage-frontend.
+
+Corrida verificada:
+https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38778635555
+
+PR de implementación:
+https://github.com/JuliAA10/ingsoft3-tps/pull/19
+
+Esta corrida demuestra que los tests, los umbrales y la publicación de
+reportes funcionan en CI. Todavía no demuestra el bloqueo de un merge
+por cobertura.
+
+### Demostración de fallo por cobertura
+
+Se agregó calculateBillableMinutes en src/lib/time.ts sin incorporar
+sus tests. La función propone redondear el tiempo facturable hacia
+arriba en bloques de 15 minutos; todavía no está conectada al cálculo
+actual de facturas.
+
+La imagen del frontend se construyó correctamente y los 18 tests
+existentes pasaron. Sin embargo, build-frontend falló porque la
+cobertura de líneas de time.ts bajó a 59,25 %, por debajo del umbral
+de 90 %. El paso terminó con código de salida 1.
+
+Corrida roja por cobertura:
+https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38780695123
+
+Para corregirlo se agregaron pruebas de redondeo, límites exactos de
+los bloques, duración cero, valores negativos y valores no finitos.
+El umbral se mantuvo sin modificaciones.
+
+Después de incorporar los tests de calculateBillableMinutes, la suite
+del frontend pasó de 18 a 29 casos. La corrida posterior finalizó
+correctamente, manteniendo los mismos umbrales de cobertura.
+
+Corrida exitosa después de agregar los tests:
+https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38781580642
+
+La corrección consistió en probar el código nuevo, sin reducir el
+porcentaje exigido ni excluir la función de la medición.
+
+## 12. Problemas adicionales y estado del trabajo
+
+Durante la edición de package.json, VS Code informó que el archivo en
+disco era más reciente. Esto ocurrió después de instalar las dependencias.
+Se indicó conservar la versión actualizada y aplicar el cambio de scripts
+sin sobrescribir las dependencias agregadas por npm.
+
+También apareció un aviso de deprecación de baseUrl. Se eliminó esa
+opción de tsconfig.json y se conservó el alias mediante paths.
+Los tests y la compilación finalizaron correctamente después del cambio.
+
+La primera ejecución de cobertura en Docker falló con EBUSY porque
+Vitest intentaba eliminar /app/coverage, que era el punto de montaje
+del volumen.
+
+Se resolvió montando la carpeta local en /out y generando los reportes
+en /out/frontend. Así Vitest puede limpiar su subcarpeta sin eliminar
+el punto de montaje. La ejecución posterior terminó correctamente.
+
+Se agregó una etapa test al Dockerfile del backend, derivada de build,
+que ejecuta scripts/test-coverage.sh.
+
+El script ejecuta los tests y genera reportes de cobertura de sentencias
+para el backend completo y para internal/services. Los umbrales iniciales
+son 5 % global y 90 % para services, frente a las mediciones de 6 % y
+100 %, respectivamente.
+
+El piso global ofrece una protección limitada y mantiene visible el
+código sin pruebas. El umbral de services protege con mayor exigencia
+las reglas de tiempos y facturación trabajadas en este TP.
+
+La ejecución local dentro del contenedor pasó los tests, cumplió ambos
+umbrales y terminó con código de salida 0.
+
+Se agregaron al job build-backend los pasos para construir la etapa test,
+ejecutarla, mostrar el resumen y publicar el artefacto coverage-backend.
+Queda pendiente verificar esta integración en GitHub Actions.
+
+#### Medición complementaria de ramas
+
+Se incorporó Gobco v1.3.4 en la etapa `test` del Dockerfile del
+backend y se ejecuta con `-branch -list-all` desde el script de cobertura.
+
+La ejecución local en Docker obtuvo 6/6 resultados de ramas cubiertos
+(100%) en `internal/services`. Los tres `if` instrumentados se evaluaron
+tanto por verdadero como por falso: error del repositorio, fechas
+faltantes y fecha de fin anterior al inicio.
+
+Este resultado corresponde únicamente a las decisiones instrumentadas
+en `services`; no representa la cobertura de ramas de todo el backend
+ni garantiza todas las combinaciones de condiciones.
+
+Se generan los archivos `branches-services.txt` y
+`branches-services.json` dentro de la carpeta de reportes del backend,
+y el resultado se incorpora a `summary.md`.
+
+La cobertura de ramas es informativa. Se mantienen los umbrales
+obligatorios de sentencias: 5% para el backend completo y 90% para
+`services`. La ejecución local obtuvo 6.0% y 100.0%, respectivamente,
+y finalizó con código de salida 0.
+
+## 13. Uso de Inteligencia Artificial
+
+Se utilizó ChatGPT como herramienta de asistencia para interpretar la consigna,
+seleccionar reglas de negocio, proponer la separación entre handlers y servicios,
+escribir los tests, implementar el doble del repositorio e interpretar los
+resultados de cobertura.
+
+También se utilizó para organizar esta documentación.
+
+El código sugerido fue incorporado al proyecto y verificado mediante ejecuciones
+locales de go test, comprobando los resultados de los tests y los porcentajes
+informados por la herramienta de cobertura.
+
+La asistencia incluyó la explicación de los asserts y de los límites de cada prueba,
+especialmente la diferencia entre comprobar la interacción con un repositorio
+simulado y verificar una consulta contra la base de datos real.
+
+En el frontend se utilizó ChatGPT para asistir en la configuración de
+Vitest, la escritura de tests y mocks, la extracción del cálculo de
+duración, la configuración de umbrales y la integración con Docker y
+GitHub Actions.
+
+Las sugerencias se verificaron ejecutando los 18 casos de test, el build
+de producción, el fallo temporal del umbral y la ejecución dentro del
+contenedor. La validación del pipeline se registra por separado según
+el resultado real de cada corrida.

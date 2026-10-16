@@ -31,6 +31,42 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
+      - name: Construir la etapa de tests del backend
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          target: test
+          load: true
+          push: false
+          tags: backend-test:ci
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Ejecutar tests y verificar cobertura del backend
+        run: |
+          mkdir -p coverage
+          docker run --rm \
+            -v "$PWD/coverage:/out" \
+            backend-test:ci
+
+      - name: Mostrar resumen de cobertura del backend
+        if: ${{ always() }}
+        run: |
+          if [ -f coverage/backend/summary.md ]; then
+            cat coverage/backend/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No se generó el resumen del backend. Revisar los pasos anteriores." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Publicar reportes de cobertura del backend
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-backend
+          path: coverage/backend/
+          if-no-files-found: error
+
   build-frontend:
     runs-on: ubuntu-latest
 
@@ -54,3 +90,70 @@ jobs:
           tags: frontend:ci
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Construir la etapa de tests del frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: ./client
+          target: test
+          load: true
+          push: false
+          tags: frontend-test:ci
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Ejecutar tests y verificar cobertura del frontend
+        run: |
+          mkdir -p coverage
+          docker run --rm \
+            -v "$PWD/coverage:/out" \
+            frontend-test:ci \
+            npm run test:coverage -- \
+            --coverage.reportsDirectory=/out/frontend
+
+      - name: Mostrar resumen de cobertura del frontend
+        if: ${{ always() }}
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          report = Path("coverage/frontend/coverage-summary.json")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("## Cobertura del frontend\n\n")
+
+              if not report.exists():
+                  summary.write(
+                      "No se generó el reporte. Revisar los pasos anteriores.\n"
+                  )
+                  raise SystemExit(1)
+
+              data = json.loads(report.read_text())
+              summary.write(
+                  "| Archivo | Sentencias | Ramas | Funciones | Líneas |\n"
+              )
+              summary.write("|---|---:|---:|---:|---:|\n")
+
+              for filename, metrics in data.items():
+                  label = (
+                      "TOTAL"
+                      if filename == "total"
+                      else filename.replace("/app/", "")
+                  )
+                  values = [
+                      str(metrics[key]["pct"]) + "%"
+                      for key in ("statements", "branches", "functions", "lines")
+                  ]
+                  summary.write(
+                      "| " + label + " | " + " | ".join(values) + " |\n"
+                  )
+
+      - name: Publicar reportes de cobertura del frontend
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-frontend
+          path: coverage/frontend/
+          if-no-files-found: error

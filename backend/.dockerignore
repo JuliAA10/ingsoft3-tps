@@ -9,3 +9,7 @@
 tmp/
 bin/
 dist/
+
+coverage/
+coverage*.out
+coverage*.html

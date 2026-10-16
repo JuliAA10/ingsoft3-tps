@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"timetracker/internal/database"
 	"timetracker/internal/models"
+	"timetracker/internal/services"
 	"timetracker/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -18,7 +19,13 @@ func CreateTimeEntry(c *gin.Context) {
 	}
 
 	entry.UserID = utils.GetUserID(c)
-	entry.Duration = entry.EndTime.Unix() - entry.StartTime.Unix()
+	duration, err := services.CalculateDuration(entry.StartTime, entry.EndTime)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	entry.Duration = duration
 
 	if err := database.DB.Create(&entry).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating time entry"})
@@ -61,7 +68,13 @@ func UpdateTimeEntry(c *gin.Context) {
 	}
 
 	entry.UserID = utils.GetUserID(c)
-	entry.Duration = entry.EndTime.Unix() - entry.StartTime.Unix()
+	duration, err := services.CalculateDuration(entry.StartTime, entry.EndTime)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	entry.Duration = duration
 
 	if err := database.DB.Save(&entry).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating time entry"})

@@ -1,7 +1,8 @@
 // src/contexts/TimerContext.tsx
-import { createContext, useContext, useState, useEffect } from 'react';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { timeEntriesApi } from '@/api/time-entries';
+import { createContext, useContext, useState, useEffect } from "react";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { timeEntriesApi } from "@/api/time-entries";
+import { calculateDuration } from "@/lib/time";
 
 interface TimerContextType {
   isRunning: boolean;
@@ -20,7 +21,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [isRunning, setIsRunning] = useState(false);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    null,
+  );
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
@@ -28,15 +31,15 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const createMutation = useMutation({
     mutationFn: timeEntriesApi.create,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['time-entries'] });
-    }
+      queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+    },
   });
 
   useEffect(() => {
     let intervalId: number;
     if (isRunning && startTime) {
       intervalId = window.setInterval(() => {
-        setElapsed(Math.floor((new Date().getTime() - startTime.getTime()) / 1000));
+        setElapsed(calculateDuration(startTime, new Date()));
       }, 1000);
     }
     return () => {
@@ -55,18 +58,18 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   const stopTimer = async () => {
     if (!selectedProjectId || !selectedTaskId || !startTime) return;
-    
+
     setIsRunning(false);
     const endTime = new Date();
-    
+
     await createMutation.mutateAsync({
       projectId: parseInt(selectedProjectId),
       taskId: parseInt(selectedTaskId),
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
-      duration: elapsed
+      duration: calculateDuration(startTime, endTime),
     });
-    
+
     resetTimer();
   };
 
@@ -85,9 +88,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [isRunning]);
 
@@ -101,7 +104,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         selectedTaskId,
         startTimer,
         stopTimer,
-        resetTimer
+        resetTimer,
       }}
     >
       {children}
@@ -112,7 +115,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 export function useTimer() {
   const context = useContext(TimerContext);
   if (context === undefined) {
-    throw new Error('useTimer must be used within a TimerProvider');
+    throw new Error("useTimer must be used within a TimerProvider");
   }
   return context;
 }
