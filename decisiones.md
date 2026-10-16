@@ -630,6 +630,27 @@ obligatorios de sentencias: 5% para el backend completo y 90% para
 `services`. La ejecución local obtuvo 6.0% y 100.0%, respectivamente,
 y finalizó con código de salida 0.
 
+#### PR de demostración conservado en rojo
+
+Se creó el PR #20 incorporando `calculateBillableAmount` sin pruebas,
+como regla propuesta pendiente de integración. No se modificaron
+los tests existentes ni los umbrales de cobertura.
+
+En CI, la construcción del frontend finalizó correctamente y los
+29 tests existentes pasaron. Sin embargo, la cobertura de líneas
+de `src/lib/time.ts` quedó en 65,11%, por debajo del 90% requerido.
+El comando terminó con código 1 y el job del frontend falló
+específicamente por cobertura insuficiente.
+
+El job del backend pasó. Los resúmenes y artefactos de cobertura
+se publicaron también en la ejecución fallida.
+
+El PR permanece abierto y sin fusionar para la defensa. Al verificarlo,
+GitHub informó el estado de merge `blocked`.
+
+- PR: https://github.com/JuliAA10/ingsoft3-tps/pull/20
+- Ejecución de CI: https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38916002270
+
 ## 13. Uso de Inteligencia Artificial
 
 Se utilizó ChatGPT como herramienta de asistencia para interpretar la consigna,
