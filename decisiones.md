@@ -1,3 +1,57 @@
+# Enlaces
+
+## Imágenes públicas
+
+- Backend: https://github.com/JuliAA10/ingsoft3-tps/pkgs/container/timetracker-backend
+- Frontend: https://github.com/JuliAA10/ingsoft3-tps/pkgs/container/timetracker-frontend
+
+Paquetes:
+
+- ghcr.io/juliaa10/timetracker-backend
+- ghcr.io/juliaa10/timetracker-frontend
+
+Etiqueta publicada y comprobada mediante docker pull sin credenciales:
+sha-dffdb97d6418781827903c9907c80ae6dff6e9b6
+
+## Cadena de publicación
+
+- PR con tests verdes y login/publicación salteados:
+  https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38919964286/job/117037043125
+
+- Corrida de main con publicación como último paso propio del job:
+  https://github.com/JuliAA10/ingsoft3-tps/actions/runs/38921016940/job/117043695853
+
+## Entornos
+
+- Frontend QA: https://timetracker-front-qa.onrender.com
+- API QA: https://timetracker-api-qa.onrender.com/health
+- Frontend PROD: https://timetracker-front-prod.onrender.com
+- API PROD: https://timetracker-api-prod.onrender.com/health
+
+## Aprobación, rechazo y restauración
+
+- Primer despliegue aprobado a PROD:
+  https://github.com/JuliAA10/ingsoft3-tps/actions/runs/39305125609/job/118240873060
+
+- Despliegue rechazado:
+  https://github.com/JuliAA10/ingsoft3-tps/actions/runs/39305125609/job/118248089321
+
+- Restauración mediante pipeline después del rollback:
+  https://github.com/JuliAA10/ingsoft3-tps/actions/runs/39305125609/job/118333537025
+
+Estos jobs pertenecen a distintos intentos de la misma corrida.
+
+## Rollback medido en Render
+
+- Backend:
+  https://dashboard.render.com/web/srv-dbb5h0rncjis73dhqgi0/deploys/dep-dbb94ho473hc73c51v8g
+
+- Frontend:
+  https://dashboard.render.com/web/srv-dbb5nm8m7kps73c79ce0/deploys/dep-dbb94jrl550s73ftkr00
+
+Los detalles de Render requieren iniciar sesión y se mostrarán durante
+la defensa.
+
 # Decisiones — TP1
 
 ## 1. ¿Por qué Git no pudo resolver el conflicto solo?
@@ -677,3 +731,291 @@ Las sugerencias se verificaron ejecutando los 18 casos de test, el build
 de producción, el fallo temporal del umbral y la ejecución dentro del
 contenedor. La validación del pipeline se registra por separado según
 el resultado real de cada corrida.
+
+# TP6 – Entrega continua, entornos y aprobaciones
+
+## 1. Qué se implementó
+
+Se extendió el pipeline de los TPs anteriores para publicar imágenes
+Docker y desplegar la aplicación en dos entornos: QA y producción.
+
+Se implementó Continuous Delivery: QA se actualiza automáticamente
+después de superar CI, pero producción requiere aprobación humana.
+
+No se implementó Continuous Deployment, porque los cambios no llegan
+automáticamente a producción sin esa decisión. Para esta aplicación,
+la aprobación permite revisar el funcionamiento real antes de promover
+un cambio, complementando una suite de tests que todavía tiene un
+alcance limitado.
+
+## 2. Publicación del artefacto
+
+Se publican dos imágenes en GitHub Container Registry: una del backend
+y otra del frontend. Cada imagen se etiqueta con sha- seguido del SHA
+completo del commit.
+
+La publicación se realiza solamente en eventos push sobre main y al
+final del mismo job que ejecuta los tests y verifica la cobertura.
+Los pasos que publican imágenes no utilizan always().
+
+La cadena se apoya en tres controles: los checks requeridos protegen
+la integración a main, solamente main publica y la publicación ocurre
+después de las verificaciones del componente.
+
+Los jobs del backend y frontend son independientes. Uno puede publicar
+si pasó aunque el otro falle, pero el despliegue de QA exige que ambos
+hayan finalizado correctamente.
+
+Publicar imágenes aunque fallen sus verificaciones haría que estar en
+el registry dejara de indicar que pasaron esos controles. Esta garantía
+corresponde al pipeline: no impide que alguien con permisos publique
+manualmente otra imagen.
+
+Se comprobó la descarga pública de ambos paquetes utilizando una
+configuración temporal de Docker sin credenciales.
+
+La etiqueta por SHA permite identificar el código de origen, pero una
+etiqueta puede sobrescribirse, por ejemplo al repetir una corrida.
+El digest identifica el contenido concreto de la imagen y ofrece una
+referencia más precisa.
+
+## 3. Entornos y separación de datos
+
+Se crearon cuatro Web Services Docker en Render: backend y frontend
+para QA, y backend y frontend para producción.
+
+En Neon se crearon app_qa y app_prod. Son bases distintas dentro del
+mismo proyecto y rama; no representan servidores independientes.
+
+Cada backend recibe su propia DATABASE_URL. GORM ejecuta AutoMigrate
+al arrancar para crear las tablas de usuarios, proyectos, tareas y
+registros de tiempo.
+
+Se comprobó la separación creando un proyecto en QA y otro llamado
+Prueba PROD en producción. El proyecto de producción apareció en
+app_prod y no en app_qa.
+
+Los cuatro servicios tienen Auto-Deploy desactivado. Después de la
+preparación inicial, el flujo normal de despliegue lo dispara Actions.
+La prueba de rollback se realizó manualmente desde Render.
+
+## 4. Configuración fuera de las imágenes
+
+El frontend mantiene /api como ruta de acceso a la API. Nginx recibe
+las solicitudes y las reenvía al backend correspondiente.
+
+Se reemplazó nginx.conf por default.conf.template. Al arrancar,
+la imagen oficial de Nginx sustituye BACKEND_URL y DNS_RESOLVER.
+Así, una misma imagen puede utilizar configuraciones diferentes
+sin recompilar React.
+
+Se comprobó localmente la sustitución de variables usando la misma
+imagen con otra dirección de backend. Esa prueba verificó la
+configuración generada, no una conexión a la dirección de ejemplo.
+
+Dentro de la imagen quedan los archivos compilados de React, la
+plantilla y los valores predeterminados para Compose local. Las URLs
+específicas de QA y PROD se proporcionan desde Render.
+
+El backend recibe DATABASE_URL, JWT_SECRET, PORT, GIN_MODE y
+ALLOWED_ORIGINS mediante variables de entorno. CORS permite configurar
+el origen del frontend para cada entorno. Los secretos JWT de QA y
+producción son diferentes.
+
+## 5. Cadena de promoción y secretos
+
+deploy-qa depende de build-backend y build-frontend mediante needs.
+Su condición if permite ejecutarlo únicamente ante un push a main.
+
+deploy-prod depende de deploy-qa y utiliza el environment production.
+GitHub lo mantiene esperando hasta que se aprueba el despliegue.
+
+Los hooks se guardaron como environment secrets:
+
+- qa: RENDER_HOOK_API_QA y RENDER_HOOK_FRONT_QA.
+- production: RENDER_HOOK_API_PROD y RENDER_HOOK_FRONT_PROD.
+
+Los jobs acceden a los secretos de su entorno. Las credenciales de la
+base y JWT se configuran en Render; no están escritas en el workflow.
+
+Cada llamada al hook incluye &ref=$GITHUB_SHA para solicitar el commit
+verificado por esa corrida, en lugar de la punta de main.
+
+Esto evita elegir accidentalmente otro commit si la rama avanza,
+pero no serializa por sí solo distintas corridas ni impide aprobar
+una corrida antigua después de una nueva.
+
+## 6. Criterios de aprobación y prueba de rechazo
+
+Antes de aprobar producción se revisan:
+
+- Los resultados de build, tests, cobertura y smoke test de QA.
+- Que ambos servicios de QA estén Live con el commit de la corrida.
+- El funcionamiento de la aplicación y el alcance del cambio.
+- La versión anterior disponible y la compatibilidad de los datos.
+
+El environment production tiene a JuliAA10 como required reviewer
+y Prevent self-review desactivado, para permitir la aprobación en
+este proyecto individual.
+
+Se realizó una promoción aprobada y luego una repetición controlada.
+En esa repetición se rechazó volver a desplegar cd9bbaa porque ya
+estaba validado en producción y no había cambios nuevos que promover.
+
+El motivo quedó escrito en GitHub. El job de producción terminó
+rechazado sin ejecutar los hooks. El resultado rojo de ese intento
+demuestra el bloqueo y no un fallo de la aplicación.
+
+## 7. Smoke tests y sus límites
+
+Se agregó /health al backend. Comprueba la conexión con PostgreSQL
+mediante PingContext, con un límite de cinco segundos. Devuelve
+HTTP 200 si responde y HTTP 503 si falla.
+
+El smoke comprueba el estado HTTP y los campos status y database
+del JSON, y verifica que la raíz del frontend responda correctamente.
+
+Se realizan hasta 30 intentos, con pausas de 20 segundos y límites
+de tiempo en las solicitudes. Cada job de deploy tiene un máximo
+de 25 minutos.
+
+El smoke no prueba login, creación de proyectos, todas las tablas,
+ni todos los caminos de negocio. Tampoco comprueba el contenido
+visual del frontend o qué commit está ejecutándose.
+
+Los hooks inician una construcción en segundo plano. Mientras tanto,
+Render puede seguir sirviendo la versión anterior, por lo que un
+smoke verde no demuestra que la nueva versión haya terminado de
+desplegarse. Se complementó con la revisión del commit Live en Render
+y pruebas manuales de la aplicación.
+
+## 8. Mismo commit y limitación de la reconstrucción
+
+En este TP Render construye desde el repositorio utilizando los
+Dockerfiles. No ejecuta directamente las imágenes publicadas en GHCR.
+
+Por eso se solicita el mismo commit en QA y PROD, pero no se garantiza
+el mismo contenido binario: las construcciones podrían resolver
+dependencias o imágenes base diferentes.
+
+Consumir la misma imagen mediante una referencia inmutable y verificar
+la versión en ejecución permitiría cerrar esta diferencia en el TP7.
+
+## 9. Límites del plan gratuito y presupuesto
+
+Render suspende los servicios gratuitos después de 15 minutos sin
+tráfico; al volver a recibir solicitudes pueden tardar alrededor de
+un minuto en arrancar. Los reintentos del smoke contemplan esa demora.
+
+Las 750 horas gratuitas mensuales se comparten entre los servicios
+del workspace. No corresponden a cada servicio por separado.
+No se utilizarán pings permanentes para mantenerlos despiertos.
+
+También hay una cuota de minutos de construcción. Si se agota sin
+un medio de pago habilitado, pueden bloquearse los nuevos builds
+mientras sigue sirviéndose la versión anterior.
+
+Como presupuesto inicial de planificación, cuatro servicios activos
+dos horas diarias durante 30 días consumirían unas 240 horas.
+No es una medición del consumo real.
+
+La guía toma 500 minutos mensuales de build como referencia.
+Con cuatro builds de cinco minutos por promoción, 20 promociones
+consumirían unos 400 minutos, dejando margen para reintentos.
+La cuota aplicable y el consumo restante deben comprobarse en Billing.
+
+Se eligió Neon para las bases, evitando la expiración a los 30 días
+del PostgreSQL gratuito de Render. También deben vigilarse las cuotas
+de Neon y conservar las URLs disponibles hasta la defensa.
+
+## 10. Estrategia propuesta para producción real
+
+Para una producción real con usuarios se propone blue-green:
+preparar una versión nueva en un entorno paralelo, validarla y cambiar
+el tráfico cuando esté lista.
+
+Su ventaja es poder devolver el tráfico rápidamente a la versión
+anterior. Su costo es mantener dos entornos de aplicación durante
+la transición y configurar el mecanismo de cambio de tráfico.
+
+Esta estrategia no está implementada en el TP. QA y PROD no son
+por sí mismos un blue-green.
+
+Faltan métricas de errores, latencia y operaciones de negocio, alertas
+y un procedimiento de cambio de tráfico. También habría que diseñar
+migraciones compatibles con ambas versiones. Cambiar el tráfico no
+revierte modificaciones de datos.
+
+## 11. Rollback probado y medido
+
+El 19/10/2026 se realizó un ensayo de rollback en ambos servicios de
+producción, pasando de cd9bbaa a e144526.
+
+Se compararon los commits: solamente cambiaba el workflow, no el
+código de aplicación ni el esquema. Por eso la prueba demuestra el
+procedimiento de redespliegue de un commit anterior, pero no una
+recuperación ante un defecto funcional.
+
+Procedimiento utilizado:
+
+1. Identificar el commit anterior conocido y revisar su compatibilidad.
+2. Abrir cada servicio de PROD en Render.
+3. Seleccionar Manual Deploy → Deploy a specific commit.
+4. Indicar e1445263a1352ccd868568ebad3d23aa33234988.
+5. Esperar a que ambos servicios estén Live con ese commit.
+6. Comprobar /health, login y conservación del proyecto Prueba PROD.
+
+Duraciones informadas por Render:
+
+| Servicio      |      Duración |
+| ------------- | ------------: |
+| Backend PROD  | 21,4 segundos |
+| Frontend PROD | 26,9 segundos |
+
+Son duraciones individuales de despliegue. No se suman ni representan
+el tiempo total de recuperación, que incluye decidir y validar.
+Los enlaces del detalle están al inicio de este archivo.
+
+Después se restauró cd9bbaa mediante Actions, pasando nuevamente por
+QA y aprobación manual de producción. Ambos smoke tests terminaron
+correctamente.
+
+La base conservó el proyecto Prueba PROD. Un rollback de código no
+restaura los datos; para eso se requieren respaldos o recuperación
+a un punto en el tiempo y un procedimiento probado.
+
+## 12. Problemas encontrados y resolución
+
+La publicación inicial en GHCR falló con permission_denied:
+write_package. El login funcionaba, pero faltaba habilitar acceso
+de escritura para Actions sobre los paquetes existentes.
+Se agregó ingsoft3-tps en Manage Actions access con rol Write
+y se repitió la corrida correctamente.
+
+En el PR de la plantilla de Nginx se subió inicialmente el renombrado
+sin los cambios de contenido y del Dockerfile. El build falló porque
+todavía intentaba copiar nginx.conf. Se agregaron los archivos
+modificados al commit siguiente y el CI pasó.
+
+Al preparar el backend de PROD faltó configurar DATABASE_URL.
+Se agregó la conexión de app_prod y se volvió a desplegar, verificando
+después las tablas en Neon.
+
+También fue necesario identificar los commits desde el detalle de
+los despliegues de Render, porque el estado Live por sí solo no
+identifica qué versión está funcionando.
+
+## 13. Uso de Inteligencia Artificial
+
+Se utilizó ChatGPT para interpretar la consigna, adaptar el workflow
+a Go y React, configurar la publicación en GHCR, preparar la plantilla
+de Nginx, el endpoint health y CORS, explicar los entornos y redactar
+esta documentación.
+
+Las propuestas se verificaron mediante builds y pruebas locales,
+corridas de Actions, descargas sin credenciales, consultas en Neon,
+pruebas de registro y proyectos, comparación de commits en Render,
+aprobación, rechazo y ensayo de rollback.
+
+Las limitaciones del smoke, de la cobertura y de reconstruir en
+Render se documentan explícitamente.
