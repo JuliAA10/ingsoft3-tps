@@ -2,8 +2,11 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
+	"strings"
 	"time"
 	"timetracker/internal/config"
 	"timetracker/internal/database"
@@ -15,7 +18,6 @@ import (
 )
 
 func main() {
-	    // TODO: agregar endpoint de health check
 
 	// Load configuration
 	config.LoadConfig()
@@ -31,15 +33,48 @@ func main() {
 	// Initialize router
 	r := gin.Default()
 
+	allowedOrigins := []string{
+	"http://localhost:3000",
+	"http://localhost:5173",
+}
+
+if value := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); value != "" {
+	allowedOrigins = nil
+
+	for _, origin := range strings.Split(value, ",") {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			allowedOrigins = append(allowedOrigins, origin)
+		}
+	}
+}
+
 	// CORS middleware
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowOrigins: allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
+	r.GET("/health", func(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if err := sqlDB.PingContext(ctx); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status":   "error",
+			"database": "unavailable",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "ok",
+		"database": "ok",
+	})
+})
 
 	// Routes
 	api := r.Group("/api")
