@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"timetracker/internal/database"
 	"timetracker/internal/models"
 	"timetracker/internal/utils"
@@ -39,6 +40,14 @@ func CreateProject(c *gin.Context) {
 	var project models.Project
 	if err := c.ShouldBindJSON(&project); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	project.Name = strings.TrimSpace(project.Name)
+	if project.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Project name is required",
+		})
 		return
 	}
 

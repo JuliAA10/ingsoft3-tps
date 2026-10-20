@@ -257,9 +257,136 @@ jobs:
           echo "QA no respondio correctamente dentro del tiempo limite."
           exit 1
 
+  integracion:
+    runs-on: ubuntu-latest
+    needs: deploy-qa
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 15
+
+    environment:
+      name: qa
+
+    defaults:
+      run:
+        working-directory: client
+
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+      QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+      QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+      PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-integracion
+      PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/integracion.json
+
+    steps:
+      - name: Bajar el codigo
+        uses: actions/checkout@v6
+
+      - name: Preparar Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Probar la API desplegada en QA
+        run: npx playwright test e2e/api.spec.js --reporter=list,html,json
+
+      - name: Mostrar resumen de integracion
+        if: ${{ always() }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path("test-results/integracion.json")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("## Integración\n\n")
+              if not report.exists():
+                  out.write("No se generó el reporte. Revisar el job.\n")
+                  raise SystemExit(1)
+              s = json.loads(report.read_text())["stats"]
+              out.write(f'{s["expected"] + s["flaky"]} passed, {s["unexpected"]} failed, {s["flaky"]} flaky, {s["skipped"]} skipped\n')
+          PY
+
+      - name: Publicar reporte de integracion
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-integracion
+          path: client/playwright-report-integracion/
+          if-no-files-found: error
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: integracion
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 15
+
+    environment:
+      name: qa
+
+    defaults:
+      run:
+        working-directory: client
+
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+      QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+      QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+      PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-e2e
+      PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/e2e.json
+
+    steps:
+      - name: Bajar el codigo
+        uses: actions/checkout@v6
+
+      - name: Preparar Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar Chromium y sus dependencias
+        run: npx playwright install --with-deps chromium
+
+      - name: Probar los flujos del usuario en QA
+        run: npx playwright test e2e/projects.spec.js --reporter=list,html,json
+
+      - name: Mostrar resumen de e2e
+        if: ${{ always() }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path("test-results/e2e.json")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("## E2E\n\n")
+              if not report.exists():
+                  out.write("No se generó el reporte. Revisar el job.\n")
+                  raise SystemExit(1)
+              s = json.loads(report.read_text())["stats"]
+              out.write(f'{s["expected"] + s["flaky"]} passed, {s["unexpected"]} failed, {s["flaky"]} flaky, {s["skipped"]} skipped\n')
+          PY
+
+      - name: Publicar reporte de e2e
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-e2e
+          path: client/playwright-report-e2e/
+          if-no-files-found: error
+
   deploy-prod:
     runs-on: ubuntu-latest
-    needs: [deploy-qa]
+    needs: e2e
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 25
 

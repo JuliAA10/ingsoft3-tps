@@ -1,10 +1,16 @@
 // src/components/forms/ProjectForm.tsx
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi } from '@/api/projects';
-import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/common/Card';
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { projectsApi } from "@/api/projects";
+import { Button } from "@/components/common/Button";
+import { Input } from "@/components/common/Input";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/common/Card";
 
 interface ProjectFormProps {
   onSuccess?: () => void;
@@ -26,9 +32,10 @@ export const ProjectForm = ({
   projectId,
 }: ProjectFormProps) => {
   const queryClient = useQueryClient();
+  const [nameError, setNameError] = useState("");
   const [formData, setFormData] = useState({
-    name: defaultValues.name || '',
-    description: defaultValues.description || '',
+    name: defaultValues.name || "",
+    description: defaultValues.description || "",
     hourlyRate: defaultValues.hourlyRate || 0,
   });
 
@@ -40,21 +47,30 @@ export const ProjectForm = ({
       return projectsApi.create(data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
       onSuccess?.();
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    mutation.mutate(formData);
+
+    const name = formData.name.trim();
+
+    if (!name) {
+      setNameError("Project name is required");
+      return;
+    }
+
+    setNameError("");
+    mutation.mutate({ ...formData, name });
   };
 
   return (
     <Card>
       <form onSubmit={handleSubmit}>
         <CardHeader>
-          <CardTitle>{isEdit ? 'Edit Project' : 'New Project'}</CardTitle>
+          <CardTitle>{isEdit ? "Edit Project" : "New Project"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -64,22 +80,37 @@ export const ProjectForm = ({
             <Input
               id="name"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
               required
             />
+            {nameError && (
+              <p role="alert" className="mt-1 text-sm text-red-600">
+                {nameError}
+              </p>
+            )}
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="description">
+            <label
+              className="block text-sm font-medium mb-1"
+              htmlFor="description"
+            >
               Description
             </label>
             <Input
               id="description"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="hourlyRate">
+            <label
+              className="block text-sm font-medium mb-1"
+              htmlFor="hourlyRate"
+            >
               Hourly Rate ($)
             </label>
             <Input
@@ -88,7 +119,12 @@ export const ProjectForm = ({
               min="0"
               step="0.01"
               value={formData.hourlyRate}
-              onChange={(e) => setFormData({ ...formData, hourlyRate: parseFloat(e.target.value) })}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  hourlyRate: parseFloat(e.target.value),
+                })
+              }
               required
             />
           </div>
@@ -100,7 +136,11 @@ export const ProjectForm = ({
             </Button>
           )}
           <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? 'Saving...' : isEdit ? 'Update Project' : 'Create Project'}
+            {mutation.isPending
+              ? "Saving..."
+              : isEdit
+                ? "Update Project"
+                : "Create Project"}
           </Button>
         </CardFooter>
       </form>
