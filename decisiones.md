@@ -52,6 +52,41 @@ Estos jobs pertenecen a distintos intentos de la misma corrida.
 Los detalles de Render requieren iniciar sesión y se mostrarán durante
 la defensa.
 
+# Enlaces del TP7
+
+## Imágenes públicas
+
+- Backend: https://github.com/JuliAA10/ingsoft3-tps/pkgs/container/timetracker-backend
+- Frontend: https://github.com/JuliAA10/ingsoft3-tps/pkgs/container/timetracker-frontend
+
+Imágenes utilizadas en la ejecución corregida:
+
+- ghcr.io/juliaa10/timetracker-backend:sha-a605262c50c8afbc007e5b52e6e91a5d2c08bb41
+- ghcr.io/juliaa10/timetracker-frontend:sha-a605262c50c8afbc007e5b52e6e91a5d2c08bb41
+
+## Entornos
+
+- Frontend QA: https://timetracker-front-qa.onrender.com
+- API QA: https://timetracker-api-qa.onrender.com/health
+- Frontend PROD: https://timetracker-front-prod.onrender.com
+- API PROD: https://timetracker-api-prod.onrender.com/health
+
+## Evidencia del bloqueo y de la corrección
+
+- PR con el cambio que provoca el fallo: https://github.com/JuliAA10/ingsoft3-tps/pull/29
+- Ejecución con integración exitosa, E2E fallido y PROD bloqueado: https://github.com/JuliAA10/ingsoft3-tps/actions/runs/39495210998
+- Reporte E2E del fallo: https://github.com/JuliAA10/ingsoft3-tps/actions/runs/39495210998/artifacts/12297003698
+- PR de corrección: https://github.com/JuliAA10/ingsoft3-tps/pull/30
+- Ejecución corregida con despliegue exitoso en PROD: https://github.com/JuliAA10/ingsoft3-tps/actions/runs/39497007523
+- Reporte de integración exitoso: https://github.com/JuliAA10/ingsoft3-tps/actions/runs/39497007523/artifacts/12297149082
+- Reporte E2E exitoso: https://github.com/JuliAA10/ingsoft3-tps/actions/runs/39497007523/artifacts/12299065041
+
+Los artefactos están sujetos al plazo de retención de GitHub Actions.
+La configuración y los eventos de despliegue de Render requieren acceso
+a la cuenta y se pueden mostrar durante la defensa.
+
+---
+
 # Decisiones — TP1
 
 ## 1. ¿Por qué Git no pudo resolver el conflicto solo?
@@ -1019,3 +1054,160 @@ aprobación, rechazo y ensayo de rollback.
 
 Las limitaciones del smoke, de la cobertura y de reconstruir en
 Render se documentan explícitamente.
+
+# TP7 — Contenedores, integración y pruebas E2E
+
+## 1. Construir una imagen y promoverla entre entornos
+
+Se configuraron los cuatro servicios de Render para ejecutar imágenes
+publicadas en GHCR. El pipeline identifica cada imagen con la etiqueta
+sha-<SHA completo del commit>.
+
+Los deploy hooks reciben la imagen mediante el parámetro imgURL.
+De esta manera, QA y PROD reciben las mismas referencias de imágenes,
+sin reconstruirlas para cada entorno.
+
+Esto reduce las diferencias que pueden aparecer al reconstruir una
+aplicación por cambios en dependencias o imágenes base. Las diferencias
+de configuración entre entornos se mantienen en las variables y secretos
+de cada servicio.
+
+La etiqueta permite relacionar código y despliegue, pero técnicamente
+puede sobrescribirse. El digest identifica el contenido de la imagen;
+por eso no se considera que una etiqueta sea inmutable por sí sola.
+
+## 2. Configuración y secretos
+
+El frontend utiliza /api y Nginx dirige las solicitudes al backend
+correspondiente mediante BACKEND_URL. Así puede utilizarse la misma
+imagen del frontend en QA y PROD.
+
+Las URL de las pruebas se configuran con API_BASE_URL y E2E_BASE_URL
+en el environment qa de GitHub Actions. Las credenciales de la cuenta
+de pruebas se guardan como QA_TEST_EMAIL y QA_TEST_PASSWORD en Secrets.
+
+Los deploy hooks también se mantienen como secretos. No se incorporan
+contraseñas, tokens ni hooks dentro de las imágenes o del repositorio.
+
+## 3. Pruebas de integración
+
+Se implementaron tres pruebas en client/e2e/api.spec.js utilizando
+las solicitudes HTTP de Playwright contra la API desplegada en QA:
+
+- Crear, consultar y eliminar un proyecto.
+- Rechazar un nombre vacío sin crear un registro.
+- Recuperar nombre, descripción y tarifa de un proyecto guardado.
+
+Estas pruebas atraviesan la API y la persistencia real en PostgreSQL,
+sin reemplazar esos componentes por mocks.
+
+Se eligieron porque verifican operaciones centrales del sistema y una
+regla de validación. La consulta posterior comprueba que los datos pueden
+recuperarse, en lugar de verificar únicamente la respuesta de creación.
+
+Son pruebas de integración amplias: cubren también configuración,
+autenticación y comunicación con la base. A cambio, dependen de la
+disponibilidad de QA y un fallo requiere investigar qué componente falló.
+
+## 4. Pruebas E2E
+
+Se implementaron tres flujos en client/e2e/projects.spec.js, ejecutados
+con Chromium contra el frontend de QA:
+
+- Crear un proyecto, verlo y eliminarlo.
+- Mostrar un error por un nombre inválido sin guardar el proyecto.
+- Conservar el proyecto y su tarifa después de recargar la página.
+
+Las pruebas interactúan con la interfaz real y utilizan la API real.
+Se generan datos identificables para cada prueba y se eliminan los
+registros creados, verificando su eliminación.
+
+Los tests unitarios siguen cubriendo lógica aislada. La integración
+comprueba la comunicación entre componentes y los E2E verifican los
+recorridos completos del usuario. No se intenta cubrir todas las
+combinaciones mediante el navegador por su mayor costo y dependencia
+del entorno.
+
+## 5. Promoción condicionada por las pruebas
+
+En los push a main, la secuencia del workflow es:
+
+build y publicación → deploy-qa → integracion → e2e → deploy-prod.
+
+Cada etapa depende del éxito de la anterior mediante needs.
+deploy-prod conserva la aprobación del environment production.
+
+Los fallos de integración o E2E impiden llegar al despliegue de PROD.
+No se utilizan continue-on-error ni comandos que oculten el resultado
+de las pruebas.
+
+Los reportes se publican con always() para conservar evidencia incluso
+cuando las pruebas fallan. Esto no habilita la promoción a PROD.
+
+## 6. Demostración de fallo y recuperación
+
+En el PR #29 se cambió el texto del botón de creación de Create Project
+a Save Project, sin modificar los tests.
+
+La compilación y las pruebas de integración pasaron. Los tres E2E
+fallaron porque no encontraron el botón esperado, y deploy-prod quedó
+omitido por la dependencia del job e2e.
+
+El cambio muestra un fallo del contrato de interfaz verificado por
+los tests; no implica que la API haya dejado de funcionar.
+
+El PR #30 restauró Create Project sin modificar los tests. La ejecución
+39497007523 completó tres pruebas de integración y tres E2E exitosamente.
+Luego de la aprobación, también finalizaron correctamente el despliegue
+y las verificaciones de PROD.
+
+## 7. Diagnóstico y dificultades
+
+Durante la configuración inicial, las credenciales de prueba se habían
+cargado como variables, mientras que el workflow las consultaba como
+Secrets. Se corrigió su ubicación en el environment qa.
+
+Se agregó validación del nombre del proyecto en frontend y backend.
+El backend aplica TrimSpace y devuelve HTTP 400 cuando el nombre queda
+vacío, antes de intentar guardarlo.
+
+En una ejecución inicial, la prueba de nombre vacío recibió HTTP 201
+en lugar de 400. Se inspeccionó la imagen publicada y se comprobó que
+contenía la validación. Después de volver a desplegar QA, la prueba pasó.
+No se estableció una causa definitiva para aquella respuesta, por lo
+que no se atribuye el incidente con certeza a una imagen desactualizada.
+
+También hubo una configuración y un despliegue manual accidental en
+PROD durante la preparación. Se verificó su funcionamiento y los
+despliegues posteriores del pipeline completaron correctamente la
+promoción. Ese despliegue manual no se utiliza como evidencia del gate.
+
+## 8. Disponibilidad, reintentos y límites
+
+Los servicios pueden necesitar tiempo para iniciar. Se utilizan esperas
+por respuestas y elementos, junto con límites de tiempo explícitos.
+Las pruebas se ejecutan con un worker y en CI se permite un reintento.
+
+Los reintentos no reemplazan la investigación de los fallos. Los reportes
+distinguen los resultados inestables de los éxitos sin reintentos.
+
+El health check comprueba disponibilidad de API y base de datos, pero
+por sí solo no demuestra qué versión está activa. La referencia de la
+imagen y los eventos de Render complementan esa verificación.
+
+Los tests cubren proyectos y no todos los módulos de la aplicación.
+Un pipeline exitoso aporta evidencia sobre los escenarios comprobados,
+sin garantizar la ausencia de otros errores.
+
+## 9. Uso de IA y validación
+
+Se utilizó IA para preparar y revisar la configuración del workflow,
+las pruebas de Playwright, la validación del nombre y la documentación.
+
+Las propuestas se contrastaron con los cambios del repositorio,
+la compilación del frontend, los resultados de CI, las respuestas reales
+de QA y los reportes de Playwright.
+
+La enumeración de tests con --list solo comprobó su descubrimiento.
+La evidencia funcional corresponde a las ejecuciones reales contra QA,
+incluyendo el fallo controlado y la recuperación posterior.
