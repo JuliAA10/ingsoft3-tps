@@ -140,7 +140,7 @@ export const ProjectForm = ({
               ? "Saving..."
               : isEdit
                 ? "Update Project"
-                : "Create Project"}
+                : "Save Project"}
           </Button>
         </CardFooter>
       </form>
