@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+/client/playwright-report/
+/client/test-results/
+/playwright-report*/
+/test-results/
