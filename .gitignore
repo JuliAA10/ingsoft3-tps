@@ -20,3 +20,12 @@ Thumbs.db
 /backend/coverage*.html
 /client/coverage/
 /backend/coverage/
+
+# Terraform: estado y configuración local
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
