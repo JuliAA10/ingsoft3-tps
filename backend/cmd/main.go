@@ -85,11 +85,6 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Endpoint temporal para verificar la captura de errores del TP9.
-	r.GET("/api/falla", func(c *gin.Context) {
-		panic("Falla de prueba del TP9")
-	})
-
 	r.GET("/health", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
