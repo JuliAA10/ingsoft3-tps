@@ -37,3 +37,26 @@ export function calculateBillableMinutes(seconds: number): number {
 
   return Math.ceil(seconds / 900) * 15;
 }
+
+// Calcula el importe usando bloques facturables de 15 minutos.
+// Regla propuesta: pendiente de pruebas e integración.
+export function calculateBillableAmount(
+  seconds: number,
+  hourlyRate: number,
+): number {
+  if (!Number.isFinite(hourlyRate)) {
+    throw new Error("La tarifa debe ser un número finito");
+  }
+
+  if (hourlyRate < 0) {
+    throw new Error("La tarifa no puede ser negativa");
+  }
+
+  const minutes = calculateBillableMinutes(seconds);
+
+  if (minutes === 0 || hourlyRate === 0) {
+    return 0;
+  }
+
+  return Math.round((minutes / 60) * hourlyRate * 100) / 100;
+}
