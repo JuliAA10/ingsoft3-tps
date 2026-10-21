@@ -85,7 +85,7 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	r.GET("/health", func(c *gin.Context) {
+	healthHandler := func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 
@@ -101,7 +101,10 @@ func main() {
 			"status":   "ok",
 			"database": "ok",
 		})
-	})
+	}
+
+	r.GET("/health", healthHandler)
+	r.HEAD("/health", healthHandler)
 
 	// Routes
 	api := r.Group("/api")
