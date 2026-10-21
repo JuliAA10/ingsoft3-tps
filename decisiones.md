@@ -1211,3 +1211,75 @@ de QA y los reportes de Playwright.
 La enumeración de tests con --list solo comprobó su descubrimiento.
 La evidencia funcional corresponde a las ejecuciones reales contra QA,
 incluyendo el fallo controlado y la recuperación posterior.
+
+# TP8 — Infraestructura como Código
+
+## 1. Riel elegido y configuración
+
+Se utilizó Terraform 1.16.6 con los providers kislerdm/neon 0.18.0
+y render-oss/render 1.9.1, fijados por versión.
+
+La carpeta infra/ declara un entorno preprod independiente: un proyecto,
+un rol y una base en Neon, y dos servicios en Render para API y frontend.
+Se reutilizan las imágenes del TP7 con la etiqueta
+sha-c3d4a9d27e0595295ddd39e608373082e612d603.
+
+DATABASE_URL se construye con los atributos de los recursos de Neon.
+BACKEND_URL se obtiene de la URL de la API creada por Terraform.
+Render genera JWT_SECRET y las credenciales de los providers se leen
+desde variables de entorno.
+
+El origen permitido por CORS se calcula a partir del nombre esperado
+del frontend. Se comprobó que coincidiera con la URL asignada por Render.
+
+El estado se guarda localmente y se excluye de Git porque contiene
+credenciales legibles. Se versiona .terraform.lock.hcl para registrar
+las versiones y hashes de los providers.
+
+## 2. Problemas encontrados y verificación
+
+La creación inicial del proyecto de Neon falló porque la API exigía
+org_id. Se agregó el identificador de la organización al recurso.
+
+Para practicar drift se intentó eliminar app_preprod desde SQL Editor,
+pero surgieron dificultades de permisos y conexión. Se realizó el
+borrado mediante la API de Neon. Terraform detectó la ausencia de la
+base y propuso recrear únicamente ese recurso. Después del apply,
+el plan volvió a indicar No changes.
+
+También se creó base_intrusa fuera de Terraform. El plan no propuso
+cambios, comprobando que no administra automáticamente todos los
+recursos existentes. La base de prueba se eliminó después.
+
+Se inspeccionó el estado local y se comprobó que los valores sensibles
+pueden quedar almacenados en texto plano. Se probó prevent_destroy
+sobre la base: Terraform rechazó el plan de destrucción. La protección
+se retiró después del ensayo para permitir el ciclo de vida de preprod.
+
+Se ejecutó destroy → apply del entorno completo: cinco recursos
+destruidos y cinco recreados. El plan posterior indicó No changes.
+Las URLs de Render se conservaron en este ensayo, mientras que los
+identificadores y el host de Neon cambiaron. Las conexiones derivadas
+permitieron utilizar la base nueva sin copiar sus datos manualmente.
+
+Se verificaron /health, registro, login y persistencia de un proyecto
+después de recargar el frontend, también después de recrear el entorno.
+La recreación recupera la configuración, no los datos anteriores.
+
+QA y PROD conservaron su funcionamiento y datos. La aparente ausencia
+de un proyecto en QA se debía a ingresar con otra cuenta; se comprobó
+su existencia y propietario mediante una consulta de solo lectura.
+
+Al finalizar se destruyó preprod. Su configuración permanece disponible
+para volver a crearlo y realizar la demostración en la defensa.
+
+## 3. Uso de Inteligencia Artificial
+
+Se utilizó ChatGPT para interpretar la consigna, adaptar el HCL a la
+aplicación Go y React con Nginx, explicar los planes, diagnosticar errores
+y asistir en la redacción de esta documentación.
+
+Las propuestas se verificaron mediante terraform fmt, validate, plan,
+apply y destroy, consultas en Neon, respuestas HTTP y pruebas manuales
+de la aplicación. Se comprobaron idempotencia, detección y reparación
+de drift, protección contra destrucción y recreación del entorno.
