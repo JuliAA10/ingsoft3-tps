@@ -1283,3 +1283,56 @@ Las propuestas se verificaron mediante terraform fmt, validate, plan,
 apply y destroy, consultas en Neon, respuestas HTTP y pruebas manuales
 de la aplicación. Se comprobaron idempotencia, detección y reparación
 de drift, protección contra destrucción y recreación del entorno.
+
+# TP9 — DevSecOps, observabilidad y feedback
+
+## 1. Seguridad y actualización de dependencias
+
+Se configuró Dependabot para Go, npm y GitHub Actions con revisión
+semanal. Se activaron sus alertas y actualizaciones de seguridad,
+y se verificó push protection. CodeQL completó los análisis de Go,
+JavaScript/TypeScript y Actions.
+
+Se analizó y mergeó el PR #48, que actualizó follow-redirects de
+1.16.0 a 1.16.1. Se revisó su alcance y el CI del PR. Después del
+merge pasaron integración y E2E en QA y se aprobó producción.
+El cambio patch no se tomó como garantía de compatibilidad:
+se validó mediante la cadena del proyecto.
+
+## 2. Monitoreo y datos de producción
+
+Se configuró UptimeRobot sobre /health de PROD cada cinco minutos.
+El 21/10/2026 se suspendió la API a las 20:03 y el aviso DOWN llegó
+unos segundos después, dentro del mismo minuto. Se reanudó a las
+20:04 y el aviso UP llegó a las 20:05. Los horarios son aproximados,
+sin precisión de segundos.
+
+Se integró Sentry en Gin y React mediante PR. Se observaron trazas
+de ambos y se generó una falla controlada en /api/falla para verificar
+la captura del error. El endpoint temporal se retiró posteriormente.
+
+En una muestra de 36 solicitudes del backend, GET /api/projects fue
+la operación más usada: 10 solicitudes y P95 de 6,44 ms.
+POST /api/auth/login presentó el mayor P95: 325,66 ms, con una sola
+solicitud. Esa muestra no permite afirmar que sea una demora habitual.
+Se creó una tarjeta en el tablero para repetir las mediciones e
+investigar el login antes de proponer una optimización.
+
+Al finalizar la prueba se pausó el monitor, conservando su historial,
+para evitar mantener los servicios gratuitos despiertos continuamente.
+
+## 3. Dificultades y uso de IA
+
+Sentry React 11 reemplazó sendDefaultPii por dataCollection;
+se adaptó la configuración y se verificó con TypeScript y el build.
+Se comprobaron las variables de Sentry en Render y se repitió el
+despliegue para aplicarlas.
+
+HEAD /health devolvía 404 porque solo estaba registrado GET.
+Se agregó HEAD usando el mismo handler y se comprobó HTTP 200
+después de finalizar el despliegue en Render.
+
+Se utilizó ChatGPT para interpretar la consigna, adaptar las
+integraciones, diagnosticar problemas y redactar la documentación.
+Las propuestas se verificaron mediante tests, builds, CI, CodeQL,
+respuestas HTTP, trazas de Sentry y avisos del monitor.
