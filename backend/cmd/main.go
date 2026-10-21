@@ -13,6 +13,9 @@ import (
 	"timetracker/internal/handlers"
 	"timetracker/internal/middleware"
 
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -21,6 +24,24 @@ func main() {
 
 	// Load configuration
 	config.LoadConfig()
+
+	// Sentry se habilita únicamente cuando el entorno tiene un DSN.
+	sentryEnabled := strings.TrimSpace(os.Getenv("SENTRY_DSN")) != ""
+
+	if sentryEnabled {
+		err := sentry.Init(sentry.ClientOptions{
+			Dsn:              os.Getenv("SENTRY_DSN"),
+			Environment:      os.Getenv("SENTRY_ENVIRONMENT"),
+			EnableTracing:    true,
+			TracesSampleRate: 1.0,
+			SendDefaultPII:   false,
+		})
+		if err != nil {
+			log.Fatalf("No se pudo inicializar Sentry: %v", err)
+		}
+
+		defer sentry.Flush(2 * time.Second)
+	}
 
 	// Initialize database
 	db := database.InitDB()
@@ -33,24 +54,30 @@ func main() {
 	// Initialize router
 	r := gin.Default()
 
+	if sentryEnabled {
+		r.Use(sentrygin.New(sentrygin.Options{
+			Repanic: true,
+		}))
+	}
+
 	allowedOrigins := []string{
-	"http://localhost:3000",
-	"http://localhost:5173",
-}
+		"http://localhost:3000",
+		"http://localhost:5173",
+	}
 
-if value := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); value != "" {
-	allowedOrigins = nil
+	if value := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); value != "" {
+		allowedOrigins = nil
 
-	for _, origin := range strings.Split(value, ",") {
-		if origin = strings.TrimSpace(origin); origin != "" {
-			allowedOrigins = append(allowedOrigins, origin)
+		for _, origin := range strings.Split(value, ",") {
+			if origin = strings.TrimSpace(origin); origin != "" {
+				allowedOrigins = append(allowedOrigins, origin)
+			}
 		}
 	}
-}
 
 	// CORS middleware
 	r.Use(cors.New(cors.Config{
-		AllowOrigins: allowedOrigins,
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -59,22 +86,22 @@ if value := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); value != "" {
 	}))
 
 	r.GET("/health", func(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
 
-	if err := sqlDB.PingContext(ctx); err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"status":   "error",
-			"database": "unavailable",
+		if err := sqlDB.PingContext(ctx); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status":   "error",
+				"database": "unavailable",
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "ok",
+			"database": "ok",
 		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":   "ok",
-		"database": "ok",
 	})
-})
 
 	// Routes
 	api := r.Group("/api")
